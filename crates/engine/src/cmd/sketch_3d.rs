@@ -23,7 +23,7 @@ pub static COMMANDS: &[CommandSpec] = &[
         .params(concat!("points: [[x,y,z]…] world fit points (2 or more): a smooth 3D curve through them (needs 3D Sketch on)", created_doc!())),
     CommandSpec::new("sketch.arc3d", "3D Arc", arc3d)
         .icon("arc3")
-        .enabled(in_sketch)
+        .enabled(in_sketch_3d)
         .params(concat!(
             "start, through, end: [x,y,z] world points: an exact circular arc through them, from start through through to end (needs 3D Sketch on). Stored exactly (centre, radius, angles), so path consumers can treat it as a true arc",
             created_doc!()
@@ -48,6 +48,17 @@ fn points(cmd: &str, p: &Value, min: usize) -> Result<Vec<Vec3>> {
 
 fn needs_3d(sk: &solidcraft_sketch::Sketch, cmd: &str) -> Result<()> {
     if sk.view.three_d { Ok(()) } else { Err(bad(cmd, "turn on 3D Sketch (sketch.options sketch_3d: true) to draw off the sketch plane")) }
+}
+
+/// The 3D Arc button starts an interactive tool, so it is only offered while a 3D sketch is
+/// being edited; otherwise the tool could only fail on its third click.
+fn in_sketch_3d(s: &Session) -> std::result::Result<(), String> {
+    let id = s.active_sketch.ok_or("no sketch is being edited (Create Sketch or Edit Sketch first)")?;
+    match s.doc.sketch(id) {
+        Ok(sk) if sk.view.three_d => Ok(()),
+        Ok(_) => Err("turn on 3D Sketch (sketch.options sketch_3d: true) to draw 3D arcs".into()),
+        Err(_) => Err("no sketch is being edited (Create Sketch or Edit Sketch first)".into()),
+    }
 }
 
 /// World command inputs belong to the target sketch's owner, which may differ from the
