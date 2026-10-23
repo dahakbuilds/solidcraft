@@ -142,11 +142,7 @@ pub fn arc_from_3_points(start: Vec3, through: Vec3, end: Vec3) -> Option<WireAr
 pub fn arc_sweep(arc: &WireArc) -> f64 {
     let (u, v) = (arc.start - arc.center, arc.end - arc.center);
     let a = u.cross(v).dot(arc.normal).atan2(u.dot(v));
-    if a <= 0.0 {
-        a + std::f64::consts::TAU
-    } else {
-        a
-    }
+    if a <= 0.0 { a + std::f64::consts::TAU } else { a }
 }
 
 /// The polyline of an exact 3D arc, sampled so every chord's sagitta stays within `tol`.
@@ -172,7 +168,15 @@ pub fn arc_polyline(arc: &WireArc, tol: f64) -> Vec<Vec3> {
 /// Is a saved arc consistent: in range, unit normal, and its ends on the circle?
 fn arc_ok(arc: &WireArc, fit: &[Vec3]) -> bool {
     let on_circle = |p: Vec3| (arc.center.dist(p) - arc.radius).abs() < 1e-6 * arc.radius.max(1.0);
-    in_range3(arc.center) && in_range3(arc.start) && in_range3(arc.end) && arc.normal.is_finite() && (arc.normal.len() - 1.0).abs() < 1e-6 && radius_in_range(arc.radius) && fit.len() == 3 && on_circle(arc.start) && on_circle(arc.end)
+    in_range3(arc.center)
+        && in_range3(arc.start)
+        && in_range3(arc.end)
+        && arc.normal.is_finite()
+        && (arc.normal.len() - 1.0).abs() < 1e-6
+        && radius_in_range(arc.radius)
+        && fit.len() == 3
+        && on_circle(arc.start)
+        && on_circle(arc.end)
 }
 
 fn clean(w: &[Vec3]) -> Option<Vec<Vec3>> {
@@ -334,7 +338,8 @@ impl Sketch {
                 return Err(SketchError::Invalid("3D point out of range".into()));
             }
         }
-        let arc = arc_from_3_points(*start, *through, *end).ok_or_else(|| SketchError::Invalid("the three points of a 3D arc must differ and not be collinear".into()))?;
+        let arc = arc_from_3_points(*start, *through, *end)
+            .ok_or_else(|| SketchError::Invalid("the three points of a 3D arc must differ and not be collinear".into()))?;
         let pts = arc_polyline(&arc, ARC_TOL);
         self.wire_budget(None, 1, pts.len() + fit.len())?;
         let id = self.fresh("w")?;
@@ -374,7 +379,8 @@ impl Sketch {
                         let [start, through, end] = fit.as_slice() else {
                             return Err(SketchError::Invalid("a 3D arc needs exactly three points".into()));
                         };
-                        let arc = arc_from_3_points(*start, *through, *end).ok_or_else(|| SketchError::Invalid("a 3D arc's points must differ and not be collinear".into()))?;
+                        let arc = arc_from_3_points(*start, *through, *end)
+                            .ok_or_else(|| SketchError::Invalid("a 3D arc's points must differ and not be collinear".into()))?;
                         (Some(arc), arc_polyline(&arc, ARC_TOL))
                     }
                     None => (None, drawn_polyline(&fit)?),
@@ -466,7 +472,12 @@ mod tests {
     #[test]
     fn an_arc_from_three_points_is_exact() {
         // A quarter circle of radius 10 in the XY plane: 0° through 45° to 90°.
-        let arc = arc_from_3_points(Vec3::new(10.0, 0.0, 0.0), Vec3::new(5.0 * std::f64::consts::SQRT_2, 5.0 * std::f64::consts::SQRT_2, 0.0), Vec3::new(0.0, 10.0, 0.0)).unwrap();
+        let arc = arc_from_3_points(
+            Vec3::new(10.0, 0.0, 0.0),
+            Vec3::new(5.0 * std::f64::consts::SQRT_2, 5.0 * std::f64::consts::SQRT_2, 0.0),
+            Vec3::new(0.0, 10.0, 0.0),
+        )
+        .unwrap();
         assert!((arc.radius - 10.0).abs() < 1e-9, "radius {}", arc.radius);
         assert!(arc.center.dist(Vec3::ZERO) < 1e-9, "centre {:?}", arc.center);
         assert!((arc_sweep(&arc) - std::f64::consts::FRAC_PI_2).abs() < 1e-9, "sweep {}", arc_sweep(&arc));
@@ -498,7 +509,8 @@ mod tests {
     #[test]
     fn an_arc_wire_stores_fit_points_samples_and_survives_a_round_trip() {
         let mut sk = Sketch::new();
-        let id = sk.add_drawn_arc_in(&[Vec3::new(10.0, 0.0, 5.0), Vec3::new(0.0, 10.0, 5.0), Vec3::new(-10.0, 0.0, 5.0)], WireSpace::Component).unwrap();
+        let id =
+            sk.add_drawn_arc_in(&[Vec3::new(10.0, 0.0, 5.0), Vec3::new(0.0, 10.0, 5.0), Vec3::new(-10.0, 0.0, 5.0)], WireSpace::Component).unwrap();
         let w = sk.wires.iter().find(|w| w.id == id).unwrap();
         assert_eq!(w.fit.len(), 3);
         assert!(w.arc.is_some());
@@ -509,7 +521,7 @@ mod tests {
         let arc = w.arc.unwrap();
         assert!(w.pts.iter().all(|p| (arc.center.dist(*p) - arc.radius).abs() < 1e-6));
         sk.validate_wires().unwrap();
-        let raw = serde_json::to_value(&w).unwrap();
+        let raw = serde_json::to_value(w).unwrap();
         assert_eq!(serde_json::from_value::<Wire>(raw).unwrap(), *w);
     }
 
