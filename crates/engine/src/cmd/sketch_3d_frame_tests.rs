@@ -332,7 +332,7 @@ fn arc3d_is_exact_inspectable_movable_and_reopens() {
     assert_eq!(w.pts.first(), w.fit.first());
     assert_eq!(w.pts.last(), w.fit.get(2));
     assert!(w.pts.iter().all(|p| (arc.center.dist(*p) - arc.radius).abs() < 1e-6));
-    drop(sk);
+    let _ = sk;
     let insp = run(&mut s, "sketch.inspect", json!({}));
     let entry = insp["wires"].as_array().unwrap().iter().find(|e| e["id"] == json!(id)).unwrap();
     assert!((entry["arc"]["radius"].as_f64().unwrap() - 10.0).abs() < 1e-9);
@@ -364,7 +364,7 @@ fn arc3d_follows_the_sketch_owner_placement() {
     let arc = sk.wires[sk.wire_index(&id).unwrap()].arc.unwrap();
     near(arc.center, Vec3::new(0.0, 0.0, 5.0));
     assert!((arc.radius - 10.0).abs() < 1e-7, "radius {}", arc.radius);
-    drop(sk);
+    let _ = sk;
     let world = s.world_state();
     let ws = &world.sketch(sketch).unwrap().sketch;
     let arc = ws.wires[ws.wire_index(&id).unwrap()].arc.unwrap();
