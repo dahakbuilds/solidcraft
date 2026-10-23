@@ -526,6 +526,9 @@ pub struct SolveApp {
     pub params: Option<params_dialog::ParamsDialog>,
     /// The Play Macro prompt, when a loaded macro asks for values.
     pub macro_run: Option<macro_run::MacroRun>,
+    /// The values macros last ran with, keyed by [`macro_run::macro_key`]; remembered between
+    /// plays and restarts (docs/macros.md), cleared per macro by the Play prompt's reset.
+    pub macro_values: std::collections::BTreeMap<String, serde_json::Value>,
     /// The Design Properties window, when open.
     pub design_properties: Option<design_properties::DesignProperties>,
     /// The Sketch report window (`sketch.inspect` from the ribbon), when open.
@@ -778,6 +781,7 @@ impl SolveApp {
             dialog: None,
             params: None,
             macro_run: None,
+            macro_values: std::collections::BTreeMap::new(),
             design_properties: None,
             sketch_report: None,
             bom: None,
@@ -1008,6 +1012,7 @@ impl SolveApp {
             "agent_cursor": self.ui.agent_cursor,
             "preferences": self.preferences,
             "gpu_path_setup_seconds": self.render_workspace.setup_seconds,
+            "macro_values": self.macro_values,
         });
         // While the Preferences dialog is open the file holds what Cancel would restore: a change
         // that was never applied must not reach disk through the periodic save, a quit or a
@@ -1106,6 +1111,9 @@ impl SolveApp {
         }
         if let Some(a) = v.get("agent_cursor").and_then(|a| serde_json::from_value(a.clone()).ok()) {
             self.ui.agent_cursor = a;
+        }
+        if let Some(m) = v.get("macro_values") {
+            self.macro_values = macro_run::clean_macro_values(m);
         }
     }
 
