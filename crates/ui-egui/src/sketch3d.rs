@@ -1,9 +1,10 @@
-//! 3D sketching in the viewport (the Sketch Palette's 3D Sketch option): the Line, Spline and
-//! Point tools take points off the sketch plane by snapping to model vertices, edges and faces
-//! and to points already drawn in 3D; segments that stay on the plane are ordinary sketch lines.
-//! A drawn 3D point (or curve end) clicked without a tool gets a move triad: drag an arrow to
-//! move along X, Y or Z, or the square to move parallel to the sketch plane. Everything runs
-//! `sketch.line3d`, `sketch.spline3d`, `sketch.point3d`, `sketch.move3d` and `sketch.line`.
+//! 3D sketching in the viewport (the Sketch Palette's 3D Sketch option): the Line, Arc, Spline
+//! and Point tools take points off the sketch plane by snapping to model vertices, edges and
+//! faces and to points already drawn in 3D; segments that stay on the plane are ordinary sketch
+//! lines and arcs. A drawn 3D point (or curve end) clicked without a tool gets a move triad:
+//! drag an arrow to move along X, Y or Z, or the square to move parallel to the sketch plane.
+//! Everything runs `sketch.line3d`, `sketch.arc3d`, `sketch.spline3d`, `sketch.point3d`,
+//! `sketch.move3d`, `sketch.line` and `sketch.arc.three_point`.
 
 use std::cell::RefCell;
 
@@ -37,7 +38,7 @@ pub fn active(app: &SolveApp) -> bool {
 }
 
 fn takes(cmd: &str) -> bool {
-    matches!(cmd, "sketch.line" | "sketch.spline.fit_point" | "sketch.point")
+    matches!(cmd, "sketch.line" | "sketch.arc.three_point" | "sketch.spline.fit_point" | "sketch.point")
 }
 
 /// Only 3D point-placing tools broaden sketch-point picking; ordinary selection stays local.
@@ -150,6 +151,22 @@ pub fn on_click(app: &mut SolveApp, tool: &mut Tool, proj: &Proj, pos: Pos2) -> 
             c.push(p);
             set_chain(Some(tool.cmd), c);
         }
+        "sketch.arc.three_point" => {
+            let mut c = chain();
+            c.push(p);
+            if c.len() >= 3 {
+                let (a, b, e) = (c[0], c[1], c[2]);
+                let r = match (on_plane(app, a), on_plane(app, b), on_plane(app, e)) {
+                    (Some(qa), Some(qb), Some(qe)) => {
+                        app.run("sketch.arc.three_point", json!({"start": [qa.x, qa.y], "through": [qb.x, qb.y], "end": [qe.x, qe.y]}))
+                    }
+                    _ => app.run("sketch.arc3d", json!({"start": [a.x, a.y, a.z], "through": [b.x, b.y, b.z], "end": [e.x, e.y, e.z]})),
+                };
+                report(app, r);
+                c.clear();
+            }
+            set_chain(Some(tool.cmd), c);
+        }
         _ => {
             let mut c = chain();
             c.push(p);
@@ -225,7 +242,18 @@ pub fn preview(app: &SolveApp, t: &Tool, painter: &egui::Painter, proj: &Proj) -
             tk.text_dim,
         );
     }
-    if t.cmd == "sketch.spline.fit_point" && all.len() >= 2 {
+    if t.cmd == "sketch.arc.three_point" && pts.len() == 2 {
+        // The arc the third click would finish: through the two points and the cursor.
+        let poly = match hover.map(|(h, _)| h) {
+            Some(h) => match solidcraft_engine::sketch::arc_from_3_points(pts[0], pts[1], h) {
+                Some(a) => solidcraft_engine::sketch::arc_polyline(&a, 0.2),
+                None => vec![pts[0], pts[1], h],
+            },
+            None => vec![pts[0], pts[1]],
+        };
+        let screen: Vec<Pos2> = poly.into_iter().filter_map(|p| proj.to_screen(p)).collect();
+        painter.add(Shape::line(screen, stroke));
+    } else if t.cmd == "sketch.spline.fit_point" && all.len() >= 2 {
         let mut w: Vec<Vec3> = pts.clone();
         if let Some((h, _)) = hover {
             w.push(h);
