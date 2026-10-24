@@ -66,7 +66,16 @@ fn the_window_adds_edits_and_deletes_a_tool() {
     }
     h.step(&json!({"widget": "Delete"})).unwrap();
     h.frames(2);
-    assert!(h.app.tooling.as_ref().unwrap().entries().is_empty(), "the tool is gone");
+    {
+        let d = h.app.tooling.as_ref().unwrap();
+        assert!(
+            d.entries().is_empty(),
+            "the tool is gone; error {:?}, selected {:?}, ids {:?}",
+            d.error,
+            d.selected,
+            d.entries().iter().map(|e| e["id"].as_str().unwrap_or("?").to_string()).collect::<Vec<_>>()
+        );
+    }
     let _ = std::fs::remove_file(&path);
 }
 
