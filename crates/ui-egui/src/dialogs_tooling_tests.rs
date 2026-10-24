@@ -41,7 +41,11 @@ fn the_window_adds_edits_and_deletes_a_tool() {
     assert!(h.widget("10 mm flat").is_some(), "the new tool is in the list");
     {
         let d = h.app.tooling.as_ref().unwrap();
-        assert!(d.selected.is_some(), "the new tool stays picked");
+        assert!(
+            d.selected.is_some(),
+            "the new tool stays picked; entries: {:?}",
+            d.entries().iter().map(|e| e["id"].as_str().unwrap_or("?").to_string()).collect::<Vec<_>>()
+        );
         assert!(d.preview.is_some(), "the preview was drawn");
         assert!(d.entries().iter().any(|e| e["label"] == "10 mm flat"));
     }
