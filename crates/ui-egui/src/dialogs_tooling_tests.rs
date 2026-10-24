@@ -64,16 +64,22 @@ fn the_window_adds_edits_and_deletes_a_tool() {
         let labels: Vec<String> = d.entries().iter().map(|e| e["label"].as_str().unwrap_or_default().to_string()).collect();
         assert_eq!(labels, vec!["10 mm flat short".to_string()], "the old label is gone");
     }
+    let del_pos = h.widget("Delete tool");
+    let apply_pos = h.widget("Apply");
+    let add_pos = h.widget("Add");
     h.step(&json!({"widget": "Delete tool"})).unwrap();
     h.frames(2);
     {
         let d = h.app.tooling.as_ref().unwrap();
         assert!(
             d.entries().is_empty(),
-            "the tool is gone; error {:?}, selected {:?}, ids {:?}",
+            "the tool is gone; error {:?}, selected {:?}, ids {:?}, del {:?}, apply {:?}, add {:?}",
             d.error,
             d.selected,
-            d.entries().iter().map(|e| e["id"].as_str().unwrap_or("?").to_string()).collect::<Vec<_>>()
+            d.entries().iter().map(|e| e["id"].as_str().unwrap_or("?").to_string()).collect::<Vec<_>>(),
+            del_pos,
+            apply_pos,
+            add_pos
         );
     }
     let _ = std::fs::remove_file(&path);
