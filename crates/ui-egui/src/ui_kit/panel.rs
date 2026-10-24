@@ -454,8 +454,9 @@ impl<'a> Window<'a> {
         self
     }
 
-    /// The height the card starts at. An area keeps the size of its first frame, so a tall body
-    /// must declare its room up front; the card still shrinks to content below this height.
+    /// The height the card starts at. An area keeps the size of its first frame and a
+    /// non-resizable window sizes to its content, so a tall body must declare its room up front;
+    /// the card is still bounded by the viewport.
     pub fn height(mut self, height: f32) -> Self {
         if height.is_finite() && height > 0.0 {
             self.height = height;
@@ -593,7 +594,9 @@ impl<'a> Window<'a> {
             .frame(frame)
             .fade_in(false)
             .fade_out(false);
-        let window = if self.height > 0.0 { window.default_height(self.height) } else { window };
+        // An area keeps the size of its first frame and a non-resizable window sizes to its
+        // content, so a tall body must declare its room up front or it spills past the frame.
+        let window = if self.height > 0.0 { window.default_height(self.height).min_height(self.height) } else { window };
         let window = match (self.anchor, self.placed) {
             (Some((align, offset)), _) => window.anchor(align, offset),
             (None, Some((pivot, pos))) => window.pivot(pivot).default_pos(pos),
