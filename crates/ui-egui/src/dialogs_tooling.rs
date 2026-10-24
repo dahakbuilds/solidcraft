@@ -278,7 +278,7 @@ impl ToolingPanel {
         if self.preview.as_ref().is_some_and(|(_, k)| *k == key) {
             return;
         }
-        let image = self.render_preview(ctx).unwrap_or_else(|| ColorImage::new([1, 1], Color32::TRANSPARENT));
+        let image = self.render_preview(ctx).unwrap_or_else(|| ColorImage::new([1, 1], vec![Color32::TRANSPARENT]));
         match &mut self.preview {
             Some((tex, k)) => {
                 tex.set(image, egui::TextureOptions::LINEAR);
@@ -339,10 +339,11 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                     if ui_kit::button(ui, "Open…", ui_kit::Button::Normal).clicked() {
                         app.pick_open(move |app, picked| {
                             if let Some(picked) = picked
-                                && let Some(d) = app.tooling.as_mut()
+                                && let Some(mut d) = app.tooling.take()
                             {
                                 d.path = picked;
                                 d.reload(app);
+                                app.tooling = Some(d);
                             }
                         });
                     }
