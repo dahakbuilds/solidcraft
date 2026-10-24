@@ -41,7 +41,7 @@ fn profile_height_queries_are_analytic() {
     assert_eq!(flat.envelope_height_at(5.0), Some(0.0));
     let ball = ball_mill();
     // the ball surface at radius r sits R - sqrt(R² - r²) above the tip
-    let r = 3.0;
+    let r: f64 = 3.0;
     let expect = 5.0 - (25.0 - r * r).sqrt();
     assert!((ball.cut_height_at(r).unwrap() - expect).abs() < 1e-9);
     assert!((ball.cut_height_at(0.0).unwrap() - 0.0).abs() < 1e-9);
