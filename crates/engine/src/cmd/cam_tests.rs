@@ -417,7 +417,7 @@ fn fixtures_and_origin() {
     assert_eq!(setup["origin"]["z_axis"][1], 1.0);
     // Non-unit and non-perpendicular axes are refused.
     assert!(s.execute("cam.origin.set", &json!({"x_axis": [2.0, 0.0, 0.0]})).is_err());
-    assert!(s.execute("cam.origin.set", &json!({"x_axis": [0.0, 0.0, 1.0]})).is_err());
+    assert!(s.execute("cam.origin.set", &json!({"x_axis": [0.0, 1.0, 0.0]})).is_err(), "parallel to the current z_axis");
     assert!(s.execute("cam.origin.set", &json!({})).is_err(), "give something");
 }
 

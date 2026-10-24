@@ -525,24 +525,24 @@ fn simulate_toolpath(_s: &mut Session, p: &Value) -> Result<Value> {
     }))
 }
 
-#[derive(Deserialize)]
-struct Machine {
-    #[serde(flatten)]
-    sim: Sim,
-    /// Name for the finished component and body (the file's stem otherwise).
-    #[serde(default)]
-    body: Option<String>,
-}
-
 /// Machine a stock block by a toolpath and make the result a body of the design: the
 /// Z-map replay's finished surface is meshed, inserted as a mesh, and converted — the
 /// same path a scanned STL takes. This is how a G-code file with no model becomes one.
 fn machine_stock(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "cam.machine";
-    let r: Machine = req(CMD, p)?;
-    let run = run_sim(CMD, &r.sim)?;
+    // `body` is this command's own parameter; the rest is the simulation request.
+    // Parse them apart rather than flattened: a flattened request lets unknown keys
+    // slip past `Sim`'s refusal.
+    let mut obj = p.as_object().ok_or_else(|| bad(CMD, "parameters must be an object"))?.clone();
+    let body = match obj.remove("body") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(t)) => Some(t),
+        Some(_) => return Err(bad(CMD, "body must be a string")),
+    };
+    let request: Sim = serde_json::from_value(Value::Object(obj)).map_err(|e| bad(CMD, e.to_string()))?;
+    let run = run_sim(CMD, &request)?;
     let mesh = sim::surface(&run.stock, &run.part, run.lo[2], run.tolerance.max(1e-4)).map_err(|e| bad(CMD, e.to_string()))?;
-    let name = r.body.clone().unwrap_or_else(|| match r.sim.file.as_deref() {
+    let name = body.unwrap_or_else(|| match request.file.as_deref() {
         Some(f) => {
             let stem = f.rsplit(['/', '\\']).next().unwrap_or(f);
             stem.rsplit_once('.').map(|(s, _)| s).unwrap_or(stem).to_string()

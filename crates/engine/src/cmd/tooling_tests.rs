@@ -357,7 +357,7 @@ fn tool_library_scan_lists_vendor_files() {
     let dir = solidcraft_io::vfs::temp_dir()
         .join(format!("solidcraft-scan-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("vendor.gtc"), "TOOL,\nTOOL_TYPE/END\nCUT_DIAMETER/6.0\nLENGTH/20\n").unwrap();
+    std::fs::write(dir.join("vendor.gtc"), "TOOL,\nTOOL_TYPE/END\nCUT_DIAMETER/6.0\nCUTDEPTH/20\nLENGTH/60\n").unwrap();
     std::fs::write(
         dir.join("kit.json"),
         r#"[{"family":"end_mill_flat","label":"6mm flat","params":{"cutting_diameter":6,"flute_length":20,"overall_length":60,"shank_diameter":10}}]"#,
