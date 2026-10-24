@@ -492,7 +492,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
             ui.horizontal_top(|ui| {
                 ui.vertical(|ui| {
                     ui.set_width(280.0);
-                    ui.add(egui::TextEdit::singleline(&mut d.search).hint_text("Search tools").desired_width(270.0));
+                    ui_kit::search_field(ui, egui::Id::new("sc_tool_search"), &mut d.search, "Search tools");
                     egui::ScrollArea::vertical().max_height((col_h - 60.0).max(100.0)).auto_shrink([false, false]).show(ui, |ui| {
                         let rows = d.filtered();
                         if rows.is_empty() {
@@ -564,20 +564,13 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                     egui::ScrollArea::vertical().id_salt("sc_tool_form_scroll").max_height((col_h - 30.0).max(140.0)).show(ui, |ui| {
                         egui::Grid::new("sc_tool_form").num_columns(2).spacing([10.0, 4.0]).min_col_width(150.0).show(ui, |ui| {
                             ui.label("Label");
-                            ui.add(egui::TextEdit::singleline(&mut d.form.label).desired_width(200.0));
+                            ui_kit::text_field(ui, &mut d.form.label, "");
                             ui.end_row();
                             let names: Vec<String> = d.families.iter().map(|f| f.label.clone()).collect();
                             let names: Vec<&str> = names.iter().map(String::as_str).collect();
                             let before = d.form.family;
                             ui.label("Family");
-                            egui::ComboBox::from_id_salt("sc_tool_family").selected_text(names.get(d.form.family).copied().unwrap_or("?")).show_ui(
-                                ui,
-                                |ui| {
-                                    for (i, name) in names.iter().enumerate() {
-                                        ui.selectable_value(&mut d.form.family, i, *name);
-                                    }
-                                },
-                            );
+                            ui_kit::dropdown(ui, "sc_tool_family", &mut d.form.family, &names);
                             ui.end_row();
                             if d.form.family != before {
                                 d.reset_params();
@@ -592,35 +585,29 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                                 }
                                 ui.label(capitalize(&label));
                                 if let Some(text) = d.form.params.get_mut(i) {
-                                    ui.add(egui::TextEdit::singleline(text).desired_width(90.0));
+                                    ui_kit::text_field(ui, text, "");
                                 }
                                 ui.end_row();
                             }
                             ui.label("Vendor");
-                            ui.add(egui::TextEdit::singleline(&mut d.form.vendor).desired_width(200.0));
+                            ui_kit::text_field(ui, &mut d.form.vendor, "");
                             ui.end_row();
                             ui.label("Product code");
-                            ui.add(egui::TextEdit::singleline(&mut d.form.product_id).desired_width(200.0));
+                            ui_kit::text_field(ui, &mut d.form.product_id, "");
                             ui.end_row();
                             let holder_names: Vec<String> =
                                 std::iter::once("None".to_string()).chain(d.holders.iter().map(|h| h.label.clone())).collect();
                             let holder_names: Vec<&str> = holder_names.iter().map(String::as_str).collect();
                             let before_holder = d.form.holder;
                             ui.label("Holder");
-                            egui::ComboBox::from_id_salt("sc_tool_holder")
-                                .selected_text(holder_names.get(d.form.holder).copied().unwrap_or("?"))
-                                .show_ui(ui, |ui| {
-                                    for (i, name) in holder_names.iter().enumerate() {
-                                        ui.selectable_value(&mut d.form.holder, i, *name);
-                                    }
-                                });
+                            ui_kit::dropdown(ui, "sc_tool_holder", &mut d.form.holder, &holder_names);
                             ui.end_row();
                             if d.form.holder != before_holder {
                                 d.fit_assembly();
                             }
                             if d.form.holder > 0 {
                                 ui.label("Stickout (mm)");
-                                ui.add(egui::TextEdit::singleline(&mut d.form.stickout).desired_width(90.0));
+                                ui_kit::text_field(ui, &mut d.form.stickout, "");
                                 ui.end_row();
                             }
                         });
