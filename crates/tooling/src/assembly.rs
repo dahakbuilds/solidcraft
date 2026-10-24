@@ -34,6 +34,13 @@ pub fn compose(tool: &CutterProfile, holder_type: &str, bore: f64, stickout: f64
     for p in &mut holder_mesh.positions {
         p.z += stickout;
     }
+    // Rebase the holder's vertex indices and face ids into the merged mesh.
+    let pos_offset = tool_rev.mesh.positions.len() as u32;
+    for tri in &mut holder_mesh.triangles {
+        for v in tri.iter_mut() {
+            *v += pos_offset;
+        }
+    }
     let face_offset = tool_rev.face_roles.len() as u32;
     for f in &mut holder_mesh.tri_face {
         *f += face_offset;
