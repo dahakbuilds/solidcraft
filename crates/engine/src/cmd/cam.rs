@@ -100,6 +100,12 @@ fn simulate_toolpath(_s: &mut Session, p: &Value) -> Result<Value> {
     let opts = sim::SimOptions { gouge_tol: tolerance, step: 0.0 };
     let report = sim::simulate(&profile, &path, &mut stock, &part, &opts).map_err(|e| bad(CMD, e.to_string()))?;
     let (cols, rows) = stock.shape();
+    // The machined grid comes back so a viewer can draw it; a huge grid is left out.
+    let stock_rows: Value = if cols * rows <= 100_000 {
+        Value::Array(stock.heights().chunks(cols).map(|row| json!(row)).collect())
+    } else {
+        Value::Null
+    };
     Ok(json!({
         "removed_mm3": report.removed_mm3,
         "gouges": report.gouge_count,
@@ -110,6 +116,9 @@ fn simulate_toolpath(_s: &mut Session, p: &Value) -> Result<Value> {
         "collisions": report.collisions,
         "samples": report.samples,
         "grid": [cols, rows],
+        "origin": [lo[0], lo[1]],
+        "cell": stock.cell(),
+        "stock_rows": stock_rows,
         "stock_top": hi[2],
         "part_top": part_top,
     }))

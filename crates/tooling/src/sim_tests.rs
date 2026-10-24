@@ -127,6 +127,26 @@ fn a_path_too_fine_for_the_budget_is_refused_up_front() {
 }
 
 #[test]
+fn the_surface_mesh_marks_gouged_cells() {
+    let (mut stock, part) = maps(10.0, 5.0);
+    let path = [pt(5.0, 20.0, 12.0, false), pt(5.0, 20.0, 4.0, true), pt(35.0, 20.0, 4.0, true)];
+    simulate(&flat_mill(), &path, &mut stock, &part, &SimOptions::default()).unwrap();
+    let mesh = surface(&stock, &part, 0.0, 0.05).unwrap();
+    assert!(!mesh.triangles.is_empty());
+    assert_eq!(mesh.positions.len(), mesh.normals.len());
+    assert_eq!(mesh.triangles.len(), mesh.tri_face.len());
+    assert!(mesh.tri_face.contains(&FACE_GOUGED), "the gouged floor is tagged");
+    assert!(mesh.tri_face.contains(&FACE_TOP));
+    assert!(mesh.tri_face.contains(&FACE_SIDES));
+    let n = mesh.positions.len() as u32;
+    assert!(mesh.triangles.iter().flatten().all(|&i| i < n));
+    for nrm in &mesh.normals {
+        let len = (nrm.x * nrm.x + nrm.y * nrm.y + nrm.z * nrm.z).sqrt();
+        assert!((len - 1.0).abs() < 1e-6, "normals are unit length");
+    }
+}
+
+#[test]
 fn an_empty_or_single_point_path_reports_nothing() {
     let (mut stock, part) = maps(10.0, 5.0);
     let report = simulate(&flat_mill(), &[], &mut stock, &part, &SimOptions::default()).unwrap();

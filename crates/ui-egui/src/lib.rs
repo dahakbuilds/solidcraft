@@ -33,6 +33,7 @@ mod dialog_descriptor;
 pub mod dialogs;
 pub mod dialogs_appearance;
 pub mod dialogs_assembly;
+pub mod dialogs_camsim;
 pub mod dialogs_coupling;
 pub mod dialogs_frame;
 mod dialogs_hole;
@@ -408,6 +409,8 @@ pub struct SolveApp {
     pub bom: Option<bom_panel::BomPanel>,
     /// The Tool Library window, when open.
     pub tooling: Option<dialogs_tooling::ToolingPanel>,
+    /// The CAM Simulation window, when open.
+    pub camsim: Option<dialogs_camsim::CamSimPanel>,
     material_card_review: Option<material_card_review::ReviewWindow>,
     /// Context menus, rename box and Properties window.
     pub menu: context_menu::MenuState,
@@ -575,6 +578,7 @@ impl SolveApp {
             design_properties: None,
             bom: None,
             tooling: None,
+            camsim: None,
             material_card_review: None,
             menu: context_menu::MenuState::default(),
             gesture: mouse_gesture::State::default(),
@@ -1057,6 +1061,10 @@ impl SolveApp {
         }
         if id == "tool.library.open" {
             dialogs_tooling::open(self);
+            return;
+        }
+        if id == "cam.simulate" {
+            dialogs_camsim::open(self);
             return;
         }
         if id == "sketch.finish" {
@@ -1797,6 +1805,7 @@ impl SolveApp {
         design_properties::show(self, ui.ctx());
         bom_panel::show(self, ui.ctx());
         dialogs_tooling::show(self, ui.ctx());
+        dialogs_camsim::show(self, ui.ctx());
         material_card_review::show(self, ui.ctx());
         recovery_ui::show(self, ui.ctx());
         stand_up::show(self, ui.ctx());

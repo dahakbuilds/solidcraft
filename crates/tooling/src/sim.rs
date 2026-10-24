@@ -16,6 +16,7 @@ use crate::{
     Result, invalid,
     profile::CutterProfile,
 };
+use solidcraft_geom::{Mesh, Vec3};
 
 /// Largest grid edge in cells.
 pub const MAX_GRID: usize = 384;
@@ -91,6 +92,32 @@ impl ZMap {
     }
     pub fn set(&mut self, i: usize, j: usize, value: f64) {
         self.data[j * self.cols + i] = value;
+    }
+    /// The cell heights, row-major (j outer, then i).
+    pub fn heights(&self) -> &[f64] {
+        &self.data
+    }
+    /// The grid origin (the min corner).
+    pub fn origin(&self) -> (f64, f64) {
+        (self.x0, self.y0)
+    }
+
+    /// Rebuild a map from cell heights, row-major (j outer). Every height must be finite
+    /// and the grid must fit within [`MAX_GRID`] per edge.
+    pub fn from_rows(min: (f64, f64), cell: f64, rows: &[Vec<f64>]) -> Result<Self> {
+        let cell = match cell {
+            c if c.is_finite() => c.clamp(MIN_CELL, 50.0),
+            _ => return Err(invalid("invalid Z-map cell size")),
+        };
+        if !min.0.is_finite() || !min.1.is_finite() || rows.is_empty() || rows.len() > MAX_GRID {
+            return Err(invalid("invalid Z-map rows"));
+        }
+        let cols = rows[0].len();
+        if cols == 0 || cols > MAX_GRID || rows.iter().any(|r| r.len() != cols) || rows.iter().flatten().any(|v| !v.is_finite()) {
+            return Err(invalid("Z-map rows must be a uniform grid of finite heights"));
+        }
+        let data: Vec<f64> = rows.iter().flatten().copied().collect();
+        Ok(Self { x0: min.0, y0: min.1, cell, cols, rows: rows.len(), data })
     }
     /// The cell centre of (i, j).
     pub fn centre(&self, i: usize, j: usize) -> (f64, f64) {
@@ -245,6 +272,113 @@ fn footprint(stock: &ZMap, x: f64, y: f64, max_r: f64) -> (usize, usize, usize, 
     let clamp_x = |v: i64| v.clamp(0, stock.cols as i64 - 1) as usize;
     let clamp_y = |v: i64| v.clamp(0, stock.rows as i64 - 1) as usize;
     (clamp_x(ci - span), clamp_x(ci + span), clamp_y(cj - span), clamp_y(cj + span))
+}
+
+/// Face ids of [`surface`]: the machined top, top cells gouged below the part, and the
+/// box sides and bottom.
+pub const FACE_TOP: u32 = 0;
+pub const FACE_GOUGED: u32 = 1;
+pub const FACE_SIDES: u32 = 2;
+
+/// A display mesh of the stock after a replay: the machined top surface with every
+/// cell that ended below `part` tagged [`FACE_GOUGED`], closed by side walls down to
+/// `bottom`. The CAM window paints the three faces (machined, gouged, blank).
+pub fn surface(stock: &ZMap, part: &ZMap, bottom: f64, tol: f64) -> Result<Mesh> {
+    if !stock.same_grid(part) {
+        return Err(invalid("stock and part must share the same grid"));
+    }
+    if !bottom.is_finite() {
+        return Err(invalid("invalid bottom height"));
+    }
+    let (cols, rows) = (stock.cols, stock.rows);
+    if cols.checked_mul(rows).and_then(|n| n.checked_mul(2)).filter(|n| *n <= 2_000_000).is_none() {
+        return Err(invalid("the stock grid is too large to mesh"));
+    }
+    let mut mesh = Mesh::default();
+    // Top surface: a (cols+1)×(rows+1) vertex grid at the cell-corner heights, taken as
+    // the maximum of the adjacent cell heights so a gouge cell stays visible.
+    let corner_z = |i: usize, j: usize| -> f64 {
+        let i0 = i.saturating_sub(1);
+        let j0 = j.saturating_sub(1);
+        let mut z = f64::NEG_INFINITY;
+        for jj in j0..=j.min(rows - 1) {
+            for ii in i0..=i.min(cols - 1) {
+                z = z.max(stock.get(ii, jj));
+            }
+        }
+        z
+    };
+    let vx = |i: usize| stock.x0 + i as f64 * stock.cell;
+    let vy = |j: usize| stock.y0 + j as f64 * stock.cell;
+    let stride = cols + 1;
+    for j in 0..=rows {
+        for i in 0..=cols {
+            mesh.positions.push(Vec3::new(vx(i), vy(j), corner_z(i, j)));
+            mesh.normals.push(Vec3::Z);
+        }
+    }
+    let gouged = |i: usize, j: usize| stock.get(i, j) < part.get(i, j) - tol;
+    for j in 0..rows {
+        for i in 0..cols {
+            let a = (j * stride + i) as u32;
+            let b = a + 1;
+            let c = a + stride as u32;
+            let d = c + 1;
+            let face = if gouged(i, j) { FACE_GOUGED } else { FACE_TOP };
+            mesh.triangles.push([a, c, b]);
+            mesh.triangles.push([b, c, d]);
+            mesh.tri_face.push(face);
+            mesh.tri_face.push(face);
+        }
+    }
+    // Sides and bottom, so the block reads as solid stock.
+    let lo = Vec3::new(stock.x0, stock.y0, bottom);
+    let hi = Vec3::new(vx(cols), vy(rows), bottom);
+    let corners = [lo, Vec3::new(hi.x, lo.y, bottom), hi, Vec3::new(lo.x, hi.y, bottom)];
+    let top_corners = [
+        mesh.positions[0],
+        mesh.positions[cols],
+        mesh.positions[rows * stride + cols],
+        mesh.positions[rows * stride],
+    ];
+    let centre = Vec3::new((lo.x + hi.x) / 2.0, (lo.y + hi.y) / 2.0, 0.0);
+    for k in 0..4 {
+        let (c0, c1) = (corners[k], corners[(k + 1) % 4]);
+        let (t0, t1) = (top_corners[k], top_corners[(k + 1) % 4]);
+        let mut n = Vec3::new((c0.x + c1.x) / 2.0 - centre.x, (c0.y + c1.y) / 2.0 - centre.y, 0.0);
+        let len = (n.x * n.x + n.y * n.y).sqrt();
+        if len > 0.0 {
+            n = Vec3::new(n.x / len, n.y / len, 0.0);
+        }
+        let p = mesh.positions.len() as u32;
+        mesh.positions.extend_from_slice(&[c0, c1, t1, t0]);
+        mesh.normals.extend_from_slice(&[n, n, n, n]);
+        mesh.triangles.push([p, p + 1, p + 2]);
+        mesh.triangles.push([p, p + 2, p + 3]);
+        mesh.tri_face.push(FACE_SIDES);
+        mesh.tri_face.push(FACE_SIDES);
+    }
+    let p = mesh.positions.len() as u32;
+    mesh.positions.extend_from_slice(&corners);
+    mesh.normals.extend_from_slice(&[Vec3::new(0.0, 0.0, -1.0); 4]);
+    mesh.triangles.push([p, p + 2, p + 1]);
+    mesh.triangles.push([p, p + 3, p + 2]);
+    mesh.tri_face.push(FACE_SIDES);
+    mesh.tri_face.push(FACE_SIDES);
+    // Per-vertex normals for the top grid, from the surface slopes.
+    for j in 0..=rows {
+        for i in 0..=cols {
+            let dzdx = (corner_z((i + 1).min(cols), j) - corner_z(i.saturating_sub(1), j)) / (2.0 * stock.cell);
+            let dzdy = (corner_z(i, (j + 1).min(rows)) - corner_z(i, j.saturating_sub(1))) / (2.0 * stock.cell);
+            let n = Vec3::new(-dzdx, -dzdy, 1.0);
+            let len = (n.x * n.x + n.y * n.y + n.z * n.z).sqrt();
+            if len > 0.0 {
+                let idx = j * stride + i;
+                mesh.normals[idx] = Vec3::new(n.x / len, n.y / len, n.z / len);
+            }
+        }
+    }
+    Ok(mesh)
 }
 
 #[cfg(test)]
