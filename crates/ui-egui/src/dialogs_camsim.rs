@@ -175,7 +175,7 @@ impl CamSimPanel {
             "stock": {"min": [0.0, 0.0, 0.0], "max": [sx, sy, sz]},
             "part_top": part_top,
         });
-        match &self.gcode_file {
+        match self.gcode_file.clone() {
             Some(file) => request["file"] = json!(file),
             None => {
                 let Some(path) = self.pocket_path(sx, sy, sz, Self::tool_diameter(&entry)) else {
@@ -313,9 +313,9 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                                 }
                             });
                         }
-                        match &d.gcode_file {
-                            Some(file) => {
-                                let name = file.rsplit(['/', '\\']).next().unwrap_or(file);
+                        let picked_name = d.gcode_file.as_deref().map(|f| f.rsplit(['/', '\\']).next().unwrap_or(f).to_string());
+                        match &picked_name {
+                            Some(name) => {
                                 ui.label(RichText::new(name).color(t.text_dim).small());
                                 if ui_kit::button(ui, tr_label("Pocket"), ui_kit::Button::Small).clicked() {
                                     d.gcode_file = None;
