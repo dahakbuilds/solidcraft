@@ -292,6 +292,7 @@ fn profile(_s: &mut Session, p: &Value) -> Result<Value> {
 
 /// The default user tool library file: `<data_dir>/libraries/tools.solidcraft-tools.json`;
 /// in the browser build, the same name inside the virtual filesystem.
+#[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
 fn default_path(cmd: &str) -> Result<std::path::PathBuf> {
     #[cfg(not(target_arch = "wasm32"))]
     let dir = crate::recovery::data_dir().ok_or_else(|| bad(cmd, "no per-user data folder is available"))?.join("libraries");
@@ -320,10 +321,9 @@ fn open(_s: &mut Session, p: &Value) -> Result<Value> {
         }
         None => default_path(CMD)?.to_string_lossy().into_owned(),
     };
-    let file = std::path::PathBuf::from(&text);
     if !solidcraft_io::vfs::exists(&text) {
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(parent) = file.parent()
+        if let Some(parent) = std::path::Path::new(&text).parent()
             && let Err(e) = std::fs::create_dir_all(parent)
         {
             return Err(bad(CMD, format!("could not create the tool library folder: {e}")));
