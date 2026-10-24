@@ -99,6 +99,11 @@ fn countersink_and_tap_build() {
 fn hostile_parameters_never_build_a_profile() {
     let p = params(&[("cutting_diameter", 10.0), ("flute_length", f64::NAN), ("overall_length", 70.0), ("shank_diameter", 10.0)]);
     assert!(of(Family::EndMillFlat, &p).is_err());
+    // an empty map is fine now: every parameter has a default (a 10 mm ball nose)
     let empty = BTreeMap::new();
-    assert!(of(Family::EndMillBall, &empty).is_err());
+    let prof = of(Family::EndMillBall, &empty).unwrap();
+    assert!(approx(prof.max_radius, 5.0));
+    // out of the schema range
+    let huge = params(&[("cutting_diameter", 1000.0), ("flute_length", 20.0), ("overall_length", 70.0), ("shank_diameter", 10.0)]);
+    assert!(of(Family::EndMillFlat, &huge).is_err());
 }
