@@ -638,7 +638,7 @@ fn scan(_s: &mut Session, p: &Value) -> Result<Value> {
                     }
                     let lower = fp.to_string_lossy().to_ascii_lowercase();
                     let gtc = [".gtc", ".p21", ".tl", ".tpt"].iter().any(|x| lower.ends_with(x));
-                    if !(gtc || lower.ends_with(".json")) {
+                    if !gtc && !lower.ends_with(".json") {
                         continue;
                     }
                     if fp.metadata().ok().filter(|m| m.is_file() && m.len() <= tooling::model::MAX_BYTES as u64).is_none() {
@@ -664,7 +664,7 @@ fn scan(_s: &mut Session, p: &Value) -> Result<Value> {
                 }
             }
         }
-        found.sort_by(|a, b| a["path"].as_str().unwrap_or("").cmp(b["path"].as_str().unwrap_or("")));
+        found.sort_by_key(|l| l["path"].as_str().unwrap_or("").to_string());
         Ok(json!({"folders": seen, "libraries": found}))
     }
     #[cfg(target_arch = "wasm32")]

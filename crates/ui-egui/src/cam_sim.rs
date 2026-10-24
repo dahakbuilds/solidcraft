@@ -84,44 +84,44 @@ pub fn tip_at(path: &Toolpath, progress: f64) -> Option<(Vec3, Vec3)> {
 
 /// The player row under the CAM tree: slider, play, speed, and what to show.
 pub fn controls(app: &mut SolveApp, ui: &mut Ui) {
-    let sim = &mut app.tree.cam_sim;
     ui.separator();
     ui.label(RichText::new(tr("ui.simulate")).strong());
     let Some(path) = active_path(app) else {
         ui.label(RichText::new(tr("ui.cam_sim_no_path")).weak());
         return;
     };
+    // Take the length before touching the state again: the path borrows the session.
     let length = path_length(path).max(1e-6);
-    let slider = Slider::new(&mut sim.progress, 0.0..=1.0).show_value(false);
-    if ui.add(slider).on_hover_text(format!("{:.0} mm", length * sim.progress)).changed() {
-        sim.playing = false;
+    let slider = Slider::new(&mut app.tree.cam_sim.progress, 0.0..=1.0).show_value(false);
+    if ui.add(slider).on_hover_text(format!("{:.0} mm", length * app.tree.cam_sim.progress)).changed() {
+        app.tree.cam_sim.playing = false;
     }
     ui.horizontal(|ui| {
-        let label = if sim.playing { "⏸" } else { "▶" };
-        if ui.button(label).clicked() {
-            sim.playing = !sim.playing;
-            if sim.playing && sim.progress >= 1.0 {
-                sim.progress = 0.0;
+        let playing = app.tree.cam_sim.playing;
+        if ui.button(if playing { "⏸" } else { "▶" }).clicked() {
+            app.tree.cam_sim.playing = !playing;
+            if app.tree.cam_sim.playing && app.tree.cam_sim.progress >= 1.0 {
+                app.tree.cam_sim.progress = 0.0;
             }
         }
         egui::ComboBox::from_id_salt("cam-sim-speed")
-            .selected_text(format!("{:.0} mm/s", sim.speed))
+            .selected_text(format!("{:.0} mm/s", app.tree.cam_sim.speed))
             .show_ui(ui, |ui| {
                 for speed in [10.0, 50.0, 200.0] {
-                    ui.selectable_value(&mut sim.speed, speed, format!("{speed:.0} mm/s"));
+                    ui.selectable_value(&mut app.tree.cam_sim.speed, speed, format!("{speed:.0} mm/s"));
                 }
             });
     });
     ui.horizontal(|ui| {
-        ui.checkbox(&mut sim.show_cutter, tr("ui.cam_sim_cutter"));
-        ui.checkbox(&mut sim.show_stock, tr("ui.cam_sim_stock"));
+        ui.checkbox(&mut app.tree.cam_sim.show_cutter, tr("ui.cam_sim_cutter"));
+        ui.checkbox(&mut app.tree.cam_sim.show_stock, tr("ui.cam_sim_stock"));
     });
-    if sim.playing {
+    if app.tree.cam_sim.playing {
         let dt = ui.ctx().input(|i| i.dt) as f64;
-        sim.progress += dt * sim.speed / length;
-        if sim.progress >= 1.0 {
-            sim.progress = 1.0;
-            sim.playing = false;
+        app.tree.cam_sim.progress += dt * app.tree.cam_sim.speed / length;
+        if app.tree.cam_sim.progress >= 1.0 {
+            app.tree.cam_sim.progress = 1.0;
+            app.tree.cam_sim.playing = false;
         }
         ui.ctx().request_repaint();
     }
