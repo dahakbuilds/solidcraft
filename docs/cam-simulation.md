@@ -7,7 +7,8 @@ path hit what it should not?** — the part surface (a gouge), the stock during 
 move (a crash) — and does it leave material behind?
 
 This page records the design and its boundaries; the math lives in
-`solidcraft_tooling::sim` and the command surface is `cam.simulate`.
+`solidcraft_tooling::sim`, the command surface is `cam.simulate`, and the Cam tab's
+CAM Simulation window drives it with a 3D preview of the machined stock.
 
 ## The model: Z-map stock and part
 
@@ -89,12 +90,23 @@ Everything is bounded: at most 384×384 cells, 100 000 path points, and a combin
 sample × cell-touch work budget that refuses a too-fine path up front instead of
 grinding for minutes.
 
+## The CAM Simulation window
+
+The Cam tab's **Simulate** button opens the CAM Simulation window (`ui.start` of
+`cam.simulate`). Pick a tool from the library, describe the stock box and the finished
+part top, set a rectangular pocket and a stepover percentage, and **Simulate** replays
+the zigzag path through the plain `cam.simulate` command. The report — removed volume,
+gouges with the worst depth, rapid collisions, material left above the part — sits
+beside a 3D preview of the machined block: the cut surface in steel, gouged cells in
+red, the untouched blank a shade darker, drag to orbit. The command also returns the
+machined grid (`origin`, `cell`, `stock_rows`) so the window can draw it; the window
+runs no math of its own.
+
 ## Roadmap
 
 1. **G-code / CLSF reader** so a post-processed file can be replayed directly
    (`cam.simulate` already takes the same shape a CL file decodes to).
 2. **Part from the design**: take the active body's tessellation and build the part
    Z-map from it, instead of a flat `part_top`.
-3. **A CAM page**: stock/part preview with gouge cells highlighted, driven by the same
-   report; camera through `navigation::handle` like every other canvas.
+3. **Imported toolpaths in the window**: a file picker beside the pocket preset.
 4. **Dexel core** for 3+2 and 5-axis work behind the same command.
