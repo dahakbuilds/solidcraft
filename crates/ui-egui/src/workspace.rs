@@ -148,6 +148,7 @@ pub const SECTIONS: &[Section] = &[
     Section { tab: "INSERT", panel: "LIBRARY", promoted: 3, ids: &["parts.fastener", "parts.library", "parts.resize", "parts.insert"] },
     Section { tab: "INSERT", panel: "LINKS", promoted: 2, ids: &["component.update_links", "component.break_link"] },
     Section { tab: "CAM", panel: "TOOLING", promoted: 1, ids: &["tool.library.open"] },
+    Section { tab: "CAM", panel: "SIMULATE", promoted: 1, ids: &["cam.simulate"] },
     Section { tab: "INSPECT", panel: "MEASURE", promoted: 3, ids: &["inspect.measure", "inspect.center_of_mass", "component.properties"] },
     Section { tab: "INSPECT", panel: "SECTION", promoted: 1, ids: &["inspect.section"] },
     Section {

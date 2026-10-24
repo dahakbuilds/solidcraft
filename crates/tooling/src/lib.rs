@@ -27,7 +27,7 @@ pub use import::{ImportReport, ImportedTool, Skipped};
 pub use mesh::{Revolved, Role};
 pub use model::{Connection, ItemKind, Provenance, ToolEntry, ToolLibrary};
 pub use profile::{CutterProfile, Segment};
-pub use sim::{ClPoint, SimOptions, SimReport, ZMap, simulate};
+pub use sim::{ClPoint, FACE_GOUGED, FACE_SIDES, FACE_TOP, SimOptions, SimReport, ZMap, simulate, surface};
 pub use starter::starter_pack;
 
 #[derive(Debug, thiserror::Error)]
