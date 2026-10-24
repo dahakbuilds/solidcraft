@@ -125,6 +125,10 @@ fn every_family_revolves_at_preview_quality() {
         Family::ChamferMill,
         Family::Countersink,
         Family::Tap,
+        Family::Keyway,
+        Family::TSlot,
+        Family::CornerRadius,
+        Family::Counterbore,
     ];
     for family in defaults {
         let schema = family.schema();

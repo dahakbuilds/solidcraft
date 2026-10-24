@@ -188,12 +188,16 @@ impl ToolingPanel {
     }
 
     fn reset_params(&mut self) {
-        if let Some(f) = self.family() {
-            self.form.params = f.params.iter().map(|p| p["default"].to_string()).collect();
-            let overall = f.params.iter().find(|p| p["name"].as_str() == Some("overall_length")).and_then(|p| p["default"].as_f64());
-            if let Some(overall) = overall {
-                self.fit_camera(overall);
-            }
+        let (texts, overall) = match self.family() {
+            Some(f) => (
+                f.params.iter().map(|p| p["default"].to_string()).collect::<Vec<String>>(),
+                f.params.iter().find(|p| p["name"].as_str() == Some("overall_length")).and_then(|p| p["default"].as_f64()),
+            ),
+            None => (Vec::new(), None),
+        };
+        self.form.params = texts;
+        if let Some(overall) = overall {
+            self.fit_camera(overall);
         }
     }
 
