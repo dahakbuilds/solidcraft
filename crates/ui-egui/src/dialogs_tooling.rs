@@ -25,7 +25,7 @@ const GOLD: Rgb = Rgb(201, 162, 39);
 const SILVER: Rgb = Rgb(184, 188, 192);
 const TEAL: Rgb = Rgb(0, 128, 128);
 /// Preview resolution in logical points and the angular steps of the revolve.
-const PREVIEW_PT: f32 = 220.0;
+const PREVIEW_PT: f32 = 260.0;
 const REVOLVE_STEPS: usize = 48;
 
 /// One family as `tool.families` describes it.
@@ -141,6 +141,14 @@ impl ToolingPanel {
         self.families.get(self.form.family)
     }
 
+    /// Frame the tool so it fills the preview: the camera distance scales with the tool's
+    /// overall length, so a 40 mm tool is not a speck next to a 150 mm one.
+    fn fit_camera(&mut self, overall: f64) {
+        if overall.is_finite() && overall > 0.0 {
+            self.cam.distance = (overall * 1.3).clamp(30.0, 4000.0);
+        }
+    }
+
     /// Fill the form from a stored entry (parameters in the schema's order).
     fn fill(&mut self, entry: &Value) {
         self.form.family = self.families.iter().position(|f| f.id == entry["family"].as_str().unwrap_or_default()).unwrap_or(0);
@@ -163,6 +171,9 @@ impl ToolingPanel {
         self.form.vendor = entry["vendor"].as_str().unwrap_or_default().to_string();
         self.form.product_id = entry["product_id"].as_str().unwrap_or_default().to_string();
         self.form.notes = entry["notes"].as_str().unwrap_or_default().to_string();
+        if let Some(overall) = entry["params"]["overall_length"].as_f64() {
+            self.fit_camera(overall);
+        }
     }
 
     /// Start composing a new tool with the family's defaults.
@@ -179,6 +190,10 @@ impl ToolingPanel {
     fn reset_params(&mut self) {
         if let Some(f) = self.family() {
             self.form.params = f.params.iter().map(|p| p["default"].to_string()).collect();
+            let overall = f.params.iter().find(|p| p["name"].as_str() == Some("overall_length")).and_then(|p| p["default"].as_f64());
+            if let Some(overall) = overall {
+                self.fit_camera(overall);
+            }
         }
     }
 
@@ -451,6 +466,11 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                         d.commit(app);
                     }
                 });
+                if let Some(e) = &d.error {
+                    // inside the form column: a long message wraps here instead of growing
+                    // the body past the window frame
+                    ui.label(RichText::new(e).color(t.error));
+                }
             });
             ui.separator();
             ui.vertical(|ui| {
@@ -475,10 +495,6 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                 });
             });
         });
-        if let Some(e) = &d.error {
-            ui.separator();
-            ui.label(RichText::new(e).color(t.error));
-        }
     });
     if !closed {
         app.tooling = Some(d);
