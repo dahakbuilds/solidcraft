@@ -245,7 +245,7 @@ impl ToolEntry {
             (Some(_), None) => return Err(invalid("an entry with a holder needs a stickout")),
             (Some(type_id), Some(stickout)) => {
                 let holder = crate::holder::find(type_id).ok_or_else(|| invalid(format!("unknown holder type `{type_id}`")))?;
-                if !stickout.is_finite() || *stickout <= holder.nose_len || *stickout > 500.0 {
+                if !stickout.is_finite() || stickout <= holder.nose_len || stickout > 500.0 {
                     return Err(invalid("stickout must be greater than the holder nose length and at most 500 mm"));
                 }
             }
