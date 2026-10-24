@@ -278,7 +278,9 @@ pub fn validate_params(family: Family, params: &BTreeMap<String, f64>) -> Result
             .and_then(|()| ok(get("flute_length") >= get("corner_radius"), "flute_length must reach at least the corner radius"))
             .and_then(|()| ok(get("flute_length") < get("overall_length"), "flute_length must be less than overall_length")),
         Family::Counterbore => ok(get("pilot_diameter") < get("counterbore_diameter"), "pilot_diameter must be less than counterbore_diameter")
-            .and_then(|()| ok(get("pilot_length") + get("counterbore_depth") < get("overall_length"), "pilot plus counterbore must fit within overall_length")),
+            .and_then(|()| {
+                ok(get("pilot_length") + get("counterbore_depth") < get("overall_length"), "pilot plus counterbore must fit within overall_length")
+            }),
     }
 }
 
