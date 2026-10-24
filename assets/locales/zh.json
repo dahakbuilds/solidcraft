@@ -969,6 +969,7 @@
   "cmd.tool_library_inspect": "检查刀具库",
   "cmd.tool_library_open": "刀具库",
   "cmd.tool_library_remove": "从库中移除刀具",
+  "cmd.tool_library_seed": "添加起始刀具",
   "cmd.tool_profile": "刀具轮廓",
   "cmd.view_ambient_occlusion": "环境光遮蔽",
   "cmd.view_apply": "还原命名视图",
