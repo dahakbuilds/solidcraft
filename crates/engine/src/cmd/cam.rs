@@ -3,7 +3,7 @@
 //! part) and rapid collisions. The math lives in `solidcraft_tooling::sim`; this module is
 //! the hostile-parameter boundary and the unit conversion.
 use super::CommandSpec;
-use super::tooling::{path, unit, Unit, parse_family, parse_params};
+use super::tooling::{Unit, parse_family, parse_params, path, unit};
 use crate::{Result, Session, params::bad};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -86,7 +86,8 @@ fn resolve_points(cmd: &str, request: &Sim) -> Result<(Vec<sim::ClPoint>, Vec<St
             if len > tooling::gcode::MAX_BYTES as u64 {
                 return Err(bad(cmd, "the G-code file exceeds 4 MiB"));
             }
-            let bytes = solidcraft_io::vfs::read(file, tooling::gcode::MAX_BYTES).map_err(|e| bad(cmd, format!("could not read the toolpath: {e}")))?;
+            let bytes =
+                solidcraft_io::vfs::read(file, tooling::gcode::MAX_BYTES).map_err(|e| bad(cmd, format!("could not read the toolpath: {e}")))?;
             let decoded = tooling::gcode::read(&String::from_utf8_lossy(&bytes)).map_err(|e| bad(cmd, e.to_string()))?;
             if decoded.points.is_empty() {
                 return Err(bad(cmd, "the G-code file carries no moves"));
