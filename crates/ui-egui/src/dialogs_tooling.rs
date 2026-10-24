@@ -373,7 +373,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                         }
                     }
                 });
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if ui_kit::button(ui, "Add", ui_kit::Button::Normal).clicked() {
                         d.start_add();
                     }
