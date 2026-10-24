@@ -3,7 +3,7 @@
 //! part) and rapid collisions. The math lives in `solidcraft_tooling::sim`; this module is
 //! the hostile-parameter boundary and the unit conversion.
 use super::CommandSpec;
-use super::tooling::{Unit, parse_family, parse_params, unit};
+use super::tooling::{path, unit, Unit, parse_family, parse_params};
 use crate::{Result, Session, params::bad};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -11,7 +11,7 @@ use solidcraft_tooling::{self as tooling, sim};
 
 pub static COMMANDS: &[CommandSpec] = &[
     CommandSpec::new("cam.simulate", "Simulate Toolpath", simulate_toolpath).icon("inspect").noundo().doc_only()
-        .params("family, params {…}, path [[x,y,z] | {x,y,z,cut?}, …] (tip positions; the first is a position, a move cuts unless cut:false), stock {min:[x,y,z], max:[x,y,z]}, part_top? (finished height, default the stock top), cell? mm (default footprint/200), tolerance? mm (default 0.05), unit? mm|inch; Z-map replay: removed volume, gouges below the part, material left above it, and rapid collisions"),
+        .params("family, params {…}, path [[x,y,z] | {x,y,z,cut?}, …] or file (a G-code toolpath, format gcode: G0/G1 linear moves, G90/G91, G20/G21, T/M6; arcs refused); stock {min:[x,y,z], max:[x,y,z]}, part_top? (finished height, default the stock top), cell? mm (default footprint/200), tolerance? mm (default 0.05), unit? mm|inch; Z-map replay: removed volume, gouges below the part, material left above it, and rapid collisions"),
 ];
 
 #[derive(Deserialize)]
@@ -27,7 +27,12 @@ struct Sim {
     family: String,
     #[serde(default)]
     params: Value,
-    path: Vec<Value>,
+    #[serde(default)]
+    path: Option<Vec<Value>>,
+    #[serde(default)]
+    file: Option<String>,
+    #[serde(default)]
+    format: Option<String>,
     stock: Extent,
     #[serde(default)]
     part_top: Option<f64>,
@@ -59,12 +64,45 @@ fn cl_point(cmd: &str, v: &Value, index: usize) -> Result<sim::ClPoint> {
     }
 }
 
+/// The tip path from either source: an inline `path` array or a `file` decoded by
+/// `format` (only `gcode` for now). Returns the points and the reader's warnings.
+fn resolve_points(cmd: &str, request: &Sim) -> Result<(Vec<sim::ClPoint>, Vec<String>)> {
+    match (request.file.as_deref(), request.path.as_ref()) {
+        (Some(_), Some(_)) => Err(bad(cmd, "give either path or file, not both")),
+        (None, None) => Err(bad(cmd, "give a path or a file")),
+        (None, Some(path)) => {
+            if path.is_empty() || path.len() > sim::MAX_PATH {
+                return Err(bad(cmd, format!("the path must carry between 1 and {} points", sim::MAX_PATH)));
+            }
+            Ok((path.iter().enumerate().map(|(i, v)| cl_point(cmd, v, i)).collect::<Result<Vec<_>>>()?, Vec::new()))
+        }
+        (Some(file), None) => {
+            let format = request.format.as_deref().unwrap_or("gcode").to_ascii_lowercase();
+            if format != "gcode" {
+                return Err(bad(cmd, format!("unknown path format `{format}` (gcode)")));
+            }
+            path(cmd, file)?;
+            let len = solidcraft_io::vfs::len(file).map_err(|e| bad(cmd, format!("could not read the toolpath: {e}")))?;
+            if len > tooling::gcode::MAX_BYTES as u64 {
+                return Err(bad(cmd, "the G-code file exceeds 4 MiB"));
+            }
+            let bytes = solidcraft_io::vfs::read(file, tooling::gcode::MAX_BYTES).map_err(|e| bad(cmd, format!("could not read the toolpath: {e}")))?;
+            let decoded = tooling::gcode::read(&String::from_utf8_lossy(&bytes)).map_err(|e| bad(cmd, e.to_string()))?;
+            if decoded.points.is_empty() {
+                return Err(bad(cmd, "the G-code file carries no moves"));
+            }
+            if decoded.points.len() > sim::MAX_PATH {
+                return Err(bad(cmd, format!("the G-code file carries more than {} moves", sim::MAX_PATH)));
+            }
+            Ok((decoded.points, decoded.warnings))
+        }
+    }
+}
+
 fn simulate_toolpath(_s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "cam.simulate";
     let request: Sim = serde_json::from_value(p.clone()).map_err(|e| bad(CMD, e.to_string()))?;
-    if request.path.is_empty() || request.path.len() > sim::MAX_PATH {
-        return Err(bad(CMD, format!("the path must carry between 1 and {} points", sim::MAX_PATH)));
-    }
+    let (points, warnings) = resolve_points(CMD, &request)?;
     let u = unit(CMD, request.unit.as_deref())?;
     let scale = match u {
         Unit::Mm => 1.0,
@@ -96,11 +134,10 @@ fn simulate_toolpath(_s: &mut Session, p: &Value) -> Result<Value> {
         Some(_) => return Err(bad(CMD, "tolerance must be a non-negative number")),
         None => 0.05 * scale,
     };
-    let path: Vec<sim::ClPoint> = request.path.iter().enumerate().map(|(i, v)| cl_point(CMD, v, i)).collect::<Result<Vec<_>>>()?;
     let mut stock = sim::ZMap::flat((lo[0], lo[1]), (hi[0], hi[1]), hi[2], cell).map_err(|e| bad(CMD, e.to_string()))?;
     let part = sim::ZMap::flat((lo[0], lo[1]), (hi[0], hi[1]), part_top, cell).map_err(|e| bad(CMD, e.to_string()))?;
     let opts = sim::SimOptions { gouge_tol: tolerance, step: 0.0 };
-    let report = sim::simulate(&profile, &path, &mut stock, &part, &opts).map_err(|e| bad(CMD, e.to_string()))?;
+    let report = sim::simulate(&profile, &points, &mut stock, &part, &opts).map_err(|e| bad(CMD, e.to_string()))?;
     let (cols, rows) = stock.shape();
     // The machined grid comes back so a viewer can draw it; a huge grid is left out.
     let stock_rows: Value =
@@ -114,6 +151,7 @@ fn simulate_toolpath(_s: &mut Session, p: &Value) -> Result<Value> {
         "remaining_worst_mm": report.remaining_worst,
         "collisions": report.collisions,
         "samples": report.samples,
+        "warnings": warnings,
         "grid": [cols, rows],
         "origin": [lo[0], lo[1]],
         "cell": stock.cell(),

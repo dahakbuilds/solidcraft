@@ -208,7 +208,7 @@ struct ProfileReq {
     unit: Option<String>,
 }
 
-fn path(cmd: &str, value: &str) -> Result<()> {
+pub(crate) fn path(cmd: &str, value: &str) -> Result<()> {
     if value.is_empty() || value.len() > 4096 || value.chars().any(char::is_control) {
         return Err(bad(cmd, "invalid tool library path"));
     }
