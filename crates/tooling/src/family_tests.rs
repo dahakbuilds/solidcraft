@@ -20,9 +20,12 @@ fn flat_end_mill_accepts_a_sane_definition() {
 }
 
 #[test]
-fn missing_required_and_unknown_parameters_are_refused() {
-    let missing = params(&[("cutting_diameter", 10.0), ("flute_length", 20.0)]);
-    assert!(validate_params(Family::EndMillFlat, &missing).unwrap_err().to_string().contains("overall_length"));
+fn missing_parameters_use_defaults_and_unknown_are_refused() {
+    // every built-in parameter carries a default, so a partial set validates and fills in
+    let partial = params(&[("cutting_diameter", 10.0), ("flute_length", 20.0)]);
+    validate_params(Family::EndMillFlat, &partial).unwrap();
+    assert_eq!(value(Family::EndMillFlat, &partial, "overall_length"), Some(70.0));
+    assert_eq!(value(Family::EndMillFlat, &partial, "shank_diameter"), Some(10.0));
     let mut extra = params(&[("cutting_diameter", 10.0), ("flute_length", 20.0), ("overall_length", 70.0), ("shank_diameter", 10.0)]);
     extra.insert("magic".into(), 1.0);
     assert!(validate_params(Family::EndMillFlat, &extra).unwrap_err().to_string().contains("magic"));

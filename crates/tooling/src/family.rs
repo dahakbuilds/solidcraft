@@ -26,9 +26,6 @@ pub struct ParamSpec {
     pub doc: &'static str,
 }
 
-const fn length(name: &'static str, min: f64, max: f64, doc: &'static str) -> ParamSpec {
-    ParamSpec { name, min, max, default: None, unit: ParamUnit::Length, doc }
-}
 const fn length_opt(name: &'static str, min: f64, max: f64, default: f64, doc: &'static str) -> ParamSpec {
     ParamSpec { name, min, max, default: Some(default), unit: ParamUnit::Length, doc }
 }
@@ -105,54 +102,54 @@ impl Family {
 }
 
 const FLAT_BALL: &[ParamSpec] = &[
-    length("cutting_diameter", 0.1, 63.0, "cutting diameter"),
-    length("flute_length", 0.1, 300.0, "axial length of the cutting flutes"),
-    length("overall_length", 1.0, 600.0, "tip to top of the tool"),
-    length("shank_diameter", 0.1, 100.0, "clamp (arbor) diameter"),
+    length_opt("cutting_diameter", 0.1, 63.0, 10.0, "cutting diameter"),
+    length_opt("flute_length", 0.1, 300.0, 20.0, "axial length of the cutting flutes"),
+    length_opt("overall_length", 1.0, 600.0, 70.0, "tip to top of the tool"),
+    length_opt("shank_diameter", 0.1, 100.0, 10.0, "clamp (arbor) diameter"),
 ];
 const BULL: &[ParamSpec] = &[
-    length("cutting_diameter", 0.1, 63.0, "cutting diameter"),
-    length("corner_radius", 0.05, 30.0, "corner fillet radius"),
-    length("flute_length", 0.1, 300.0, "axial length of the cutting flutes"),
-    length("overall_length", 1.0, 600.0, "tip to top of the tool"),
-    length("shank_diameter", 0.1, 100.0, "clamp (arbor) diameter"),
+    length_opt("cutting_diameter", 0.1, 63.0, 10.0, "cutting diameter"),
+    length_opt("corner_radius", 0.05, 30.0, 1.0, "corner fillet radius"),
+    length_opt("flute_length", 0.1, 300.0, 20.0, "axial length of the cutting flutes"),
+    length_opt("overall_length", 1.0, 600.0, 70.0, "tip to top of the tool"),
+    length_opt("shank_diameter", 0.1, 100.0, 10.0, "clamp (arbor) diameter"),
 ];
 const DRILL: &[ParamSpec] = &[
-    length("cutting_diameter", 0.05, 63.0, "drill diameter"),
-    length("flute_length", 0.1, 300.0, "flute length below the neck"),
-    length("overall_length", 1.0, 600.0, "tip to top of the shank"),
-    length("shank_diameter", 0.05, 100.0, "shank diameter"),
+    length_opt("cutting_diameter", 0.05, 63.0, 6.0, "drill diameter"),
+    length_opt("flute_length", 0.1, 300.0, 30.0, "flute length below the neck"),
+    length_opt("overall_length", 1.0, 600.0, 60.0, "tip to top of the shank"),
+    length_opt("shank_diameter", 0.05, 100.0, 6.0, "shank diameter"),
     angle("point_angle", 60.0, 179.9, 118.0, "included point angle"),
 ];
 const CENTER_DRILL: &[ParamSpec] = &[
-    length("pilot_diameter", 0.1, 20.0, "pilot (centre) hole diameter"),
-    length("pilot_length", 0.1, 30.0, "pilot cylinder length"),
-    length("major_diameter", 0.2, 63.0, "countersink (major) diameter"),
+    length_opt("pilot_diameter", 0.1, 20.0, 2.0, "pilot (centre) hole diameter"),
+    length_opt("pilot_length", 0.1, 30.0, 5.0, "pilot cylinder length"),
+    length_opt("major_diameter", 0.2, 63.0, 6.0, "countersink (major) diameter"),
     angle("point_angle", 60.0, 179.9, 118.0, "included angle of the countersink cone"),
-    length("overall_length", 1.0, 300.0, "tip to top of the shank"),
-    length("shank_diameter", 0.1, 63.0, "shank diameter"),
+    length_opt("overall_length", 1.0, 300.0, 50.0, "tip to top of the shank"),
+    length_opt("shank_diameter", 0.1, 63.0, 6.0, "shank diameter"),
 ];
 const CHAMFER_MILL: &[ParamSpec] = &[
-    length("cutting_diameter", 0.5, 63.0, "maximum cutting diameter"),
+    length_opt("cutting_diameter", 0.5, 63.0, 10.0, "maximum cutting diameter"),
     angle("included_angle", 30.0, 179.9, 90.0, "included chamfer angle"),
     length_opt("pilot_diameter", 0.0, 31.0, 0.0, "flat tip diameter below the cone"),
-    length("flute_length", 0.1, 100.0, "length of the cone plus its relief"),
-    length("overall_length", 1.0, 600.0, "tip to top of the tool"),
-    length("shank_diameter", 0.1, 100.0, "clamp (arbor) diameter"),
+    length_opt("flute_length", 0.1, 100.0, 8.0, "length of the cone plus its relief"),
+    length_opt("overall_length", 1.0, 600.0, 50.0, "tip to top of the tool"),
+    length_opt("shank_diameter", 0.1, 100.0, 10.0, "clamp (arbor) diameter"),
 ];
 const COUNTERSINK: &[ParamSpec] = &[
-    length("cutting_diameter", 0.5, 63.0, "maximum cutting diameter"),
+    length_opt("cutting_diameter", 0.5, 63.0, 10.0, "maximum cutting diameter"),
     angle("included_angle", 30.0, 179.9, 90.0, "included cone angle"),
-    length("flute_length", 0.1, 100.0, "length of the cone plus its relief"),
-    length("overall_length", 1.0, 600.0, "tip to top of the tool"),
-    length("shank_diameter", 0.1, 100.0, "clamp (arbor) diameter"),
+    length_opt("flute_length", 0.1, 100.0, 8.0, "length of the cone plus its relief"),
+    length_opt("overall_length", 1.0, 600.0, 50.0, "tip to top of the tool"),
+    length_opt("shank_diameter", 0.1, 100.0, 10.0, "clamp (arbor) diameter"),
 ];
 const TAP: &[ParamSpec] = &[
-    length("major_diameter", 0.5, 63.0, "thread major diameter"),
-    length("pitch", 0.2, 6.0, "thread pitch"),
-    length("thread_length", 0.5, 200.0, "threaded length"),
-    length("overall_length", 1.0, 600.0, "tip to top of the shank"),
-    length("shank_diameter", 0.1, 100.0, "shank (tang) diameter"),
+    length_opt("major_diameter", 0.5, 63.0, 6.0, "thread major diameter"),
+    length_opt("pitch", 0.2, 6.0, 1.0, "thread pitch"),
+    length_opt("thread_length", 0.5, 200.0, 20.0, "threaded length"),
+    length_opt("overall_length", 1.0, 600.0, 60.0, "tip to top of the shank"),
+    length_opt("shank_diameter", 0.1, 100.0, 4.0, "shank (tang) diameter"),
 ];
 
 /// The tangent of half an included angle given in degrees; validation keeps angles off 0 and 180.
