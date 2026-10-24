@@ -32,6 +32,7 @@ solidcraft-sketch = { workspace = true }
 solidcraft-kernel = { workspace = true }
 solidcraft-doc = { workspace = true }
 solidcraft-io = { workspace = true }
+solidcraft-cam = { workspace = true }
 solidcraft-tooling = { workspace = true }
 solidcraft-render = { workspace = true }
 serde = { workspace = true }

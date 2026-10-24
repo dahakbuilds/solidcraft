@@ -1,18 +1,361 @@
-//! CAM simulation: replay a milling toolpath against a stock block and the finished part,
-//! reporting removed volume, gouges (cuts below the part), misses (material left above the
-//! part) and rapid collisions. The math lives in `solidcraft_tooling::sim`; this module is
-//! the hostile-parameter boundary and the unit conversion.
+//! CAM: the setup saved with the design (operations, stock, fixtures, toolpaths and the
+//! work origin, in `solidcraft-cam`) and the simulation that replays a toolpath against
+//! a stock block (the math in `solidcraft-tooling::sim`). This module is the
+//! hostile-parameter boundary and the unit conversion; state changes go through the
+//! document so undo and the design file carry them.
 use super::CommandSpec;
 use super::tooling::{Unit, parse_family, parse_params, path, unit};
 use crate::{Result, Session, params::bad};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use solidcraft_cam::{self as cam, Allowance, Fixture, Operation, Stock, ToolRef, Toolpath, WorkOrigin};
 use solidcraft_tooling::{self as tooling, sim};
 
 pub static COMMANDS: &[CommandSpec] = &[
     CommandSpec::new("cam.simulate", "Simulate Toolpath", simulate_toolpath).icon("inspect").noundo().doc_only()
         .params("family, params {…}, path [[x,y,z] | {x,y,z,cut?}, …] or file (a G-code toolpath, format gcode: G0/G1 linear moves, G90/G91, G20/G21, T/M6; arcs refused); stock {min:[x,y,z], max:[x,y,z]}, part_top? (finished height, default the stock top), cell? mm (default footprint/200), tolerance? mm (default 0.05), unit? mm|inch; Z-map replay: removed volume, gouges below the part, material left above it, and rapid collisions"),
+    CommandSpec::new("cam.setup", "CAM Setup", setup).icon("list").noundo().doc_only()
+        .params("→ operations [{id, name, tool?, stock?, toolpath?, comment?}], fixtures [{id, name, path, origin}], origin {position, x_axis, z_axis}, tool_library?"),
+    CommandSpec::new("cam.operation.add", "Add CAM Operation", add_operation).at("CAM", "SETUP").icon("new").doc_only()
+        .params("name?, tool? {number?, entry?, name?}, stock? {kind: box|x,y,z | cylinder|radius,height | body|body, origin?, allowance?}, comment? → id, name"),
+    CommandSpec::new("cam.operation.rename", "Rename CAM Operation", rename_operation).icon("edit").doc_only()
+        .params("id, name → id, name"),
+    CommandSpec::new("cam.operation.remove", "Remove CAM Operation", remove_operation).icon("delete").doc_only()
+        .params("id → removed"),
+    CommandSpec::new("cam.tool.assign", "Assign CAM Tool", assign_tool).icon("gear").doc_only()
+        .params("id, number?, entry?, name? → tool"),
+    CommandSpec::new("cam.stock.set", "Set CAM Stock", set_stock).at("CAM", "SETUP").icon("box").doc_only()
+        .params("id, kind: box (x, y, z) | cylinder (radius, height) | body (body), origin? [x,y,z], allowance? {plus_x, minus_x, plus_y, minus_y, plus_z, minus_z} → stock"),
+    CommandSpec::new("cam.toolpath.set", "Set CAM Toolpath", set_toolpath).icon("line").doc_only()
+        .params("id, segments [{type: line, from, to, cut?} | {type: arc, from, to, center, normal, clockwise?, cut?}] → segments"),
+    CommandSpec::new("cam.toolpath.load", "Load G-code Toolpath", load_toolpath).at("CAM", "SETUP").icon("import").doc_only()
+        .params("file (G-code), format? (gcode), id? (existing operation; a new one by the file's name otherwise), allowance? (stock margin, default 0) → id, segments, tools, warnings, stock"),
+    CommandSpec::new("cam.toolpath.remove", "Remove CAM Toolpath", remove_toolpath).icon("delete").doc_only()
+        .params("id → removed"),
+    CommandSpec::new("cam.fixture.add", "Add CAM Fixture", add_fixture).icon("import").doc_only()
+        .params("path (a model file), name?, origin? [x,y,z] → id, name"),
+    CommandSpec::new("cam.fixture.remove", "Remove CAM Fixture", remove_fixture).icon("delete").doc_only()
+        .params("id → removed"),
+    CommandSpec::new("cam.fixture.place", "Place CAM Fixture", place_fixture).icon("move").doc_only()
+        .params("id, origin [x,y,z] → id, origin"),
+    CommandSpec::new("cam.origin.set", "Set Work Origin", set_origin).icon("origin").doc_only()
+        .params("position? [x,y,z], x_axis? [x,y,z], z_axis? [x,y,z] → origin"),
 ];
+
+/// Parse a command's JSON into its request struct, reporting at the command boundary.
+fn req<T: serde::de::DeserializeOwned>(cmd: &str, p: &Value) -> Result<T> {
+    serde_json::from_value(p.clone()).map_err(|e| bad(cmd, e.to_string()))
+}
+
+/// Fail the same way for a value the `solidcraft-cam` crate refused.
+fn cam_err(cmd: &str, e: cam::CamError) -> crate::EngineError {
+    bad(cmd, e.to_string())
+}
+
+fn setup(s: &mut Session, _p: &Value) -> Result<Value> {
+    serde_json::to_value(&s.doc.cam).map_err(|e| bad("cam.setup", e.to_string()))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, default)]
+struct OpAdd {
+    name: Option<String>,
+    tool: Option<ToolRef>,
+    stock: Option<Stock>,
+    comment: Option<String>,
+}
+
+fn add_operation(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "cam.operation.add";
+    let r: OpAdd = req(CMD, p)?;
+    let id = s.doc_mut().allocate_id().map_err(|e| bad(CMD, e.to_string()))?;
+    let name = r.name.unwrap_or_else(|| format!("Operation {}", s.doc.cam.operations.len() + 1));
+    let op = Operation { id, name, tool: r.tool, stock: r.stock, toolpath: None, comment: r.comment };
+    op.check().map_err(|e| cam_err(CMD, e))?;
+    let name = op.name.clone();
+    s.doc_mut().cam.operations.push(op);
+    Ok(json!({"id": id, "name": name}))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IdName {
+    id: u64,
+    name: String,
+}
+
+fn rename_operation(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "cam.operation.rename";
+    let r: IdName = req(CMD, p)?;
+    let op = s.doc_mut().cam.find_operation_mut(r.id).ok_or_else(|| bad(CMD, format!("no CAM operation with id {}", r.id)))?;
+    op.name = r.name;
+    op.check().map_err(|e| cam_err(CMD, e))?;
+    Ok(json!({"id": op.id, "name": op.name}))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IdOnly {
+    id: u64,
+}
+
+fn remove_operation(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "cam.operation.remove";
+    let r: IdOnly = req(CMD, p)?;
+    let doc = s.doc_mut();
+    let before = doc.cam.operations.len();
+    doc.cam.operations.retain(|o| o.id != r.id);
+    if doc.cam.operations.len() == before {
+        return Err(bad(CMD, format!("no CAM operation with id {}", r.id)));
+    }
+    Ok(json!({"removed": r.id}))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, default)]
+struct ToolAssign {
+    id: u64,
+    number: Option<u32>,
+    entry: Option<String>,
+    name: Option<String>,
+}
+
+fn assign_tool(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "cam.tool.assign";
+    let r: ToolAssign = req(CMD, p)?;
+    if r.number.is_none() && r.entry.is_none() && r.name.is_none() {
+        return Err(bad(CMD, "give number, entry or name"));
+    }
+    let op = s.doc_mut().cam.find_operation_mut(r.id).ok_or_else(|| bad(CMD, format!("no CAM operation with id {}", r.id)))?;
+    let mut tool = op.tool.clone().unwrap_or_default();
+    if let Some(number) = r.number {
+        tool.number = number;
+    }
+    if let Some(entry) = r.entry {
+        tool.entry = entry;
+    }
+    if let Some(name) = r.name {
+        tool.name = name;
+    }
+    tool.check().map_err(|e| cam_err(CMD, e))?;
+    let out = serde_json::to_value(&tool).map_err(|e| bad(CMD, e.to_string()))?;
+    op.tool = Some(tool);
+    Ok(json!({"id": r.id, "tool": out}))
+}
+
+fn set_stock(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "cam.stock.set";
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct StockSet {
+        id: u64,
+        #[serde(flatten)]
+        stock: Stock,
+    }
+    let r: StockSet = req(CMD, p)?;
+    r.stock.check().map_err(|e| cam_err(CMD, e))?;
+    let op = s.doc_mut().cam.find_operation_mut(r.id).ok_or_else(|| bad(CMD, format!("no CAM operation with id {}", r.id)))?;
+    let out = serde_json::to_value(&r.stock).map_err(|e| bad(CMD, e.to_string()))?;
+    op.stock = Some(r.stock);
+    Ok(json!({"id": r.id, "stock": out}))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PathSet {
+    id: u64,
+    segments: Vec<cam::Segment>,
+}
+
+fn set_toolpath(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "cam.toolpath.set";
+    let r: PathSet = req(CMD, p)?;
+    let path = Toolpath { segments: r.segments };
+    path.check().map_err(|e| cam_err(CMD, e))?;
+    let count = path.len();
+    let op = s.doc_mut().cam.find_operation_mut(r.id).ok_or_else(|| bad(CMD, format!("no CAM operation with id {}", r.id)))?;
+    op.toolpath = Some(path);
+    Ok(json!({"id": r.id, "segments": count}))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, default)]
+struct PathLoad {
+    file: String,
+    format: Option<String>,
+    id: Option<u64>,
+    allowance: Option<f64>,
+}
+
+/// `T7` → 7; anything else → 0 (the name is kept as it was).
+fn tool_number(name: &str) -> u32 {
+    name.strip_prefix('T').and_then(|n| n.parse::<u32>().ok()).unwrap_or(0)
+}
+
+fn load_toolpath(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "cam.toolpath.load";
+    let r: PathLoad = req(CMD, p)?;
+    let format = r.format.as_deref().unwrap_or("gcode").to_ascii_lowercase();
+    if format != "gcode" {
+        return Err(bad(CMD, format!("unknown path format `{format}` (gcode)")));
+    }
+    path(CMD, &r.file)?;
+    let len = solidcraft_io::vfs::len(&r.file).map_err(|e| bad(CMD, format!("could not read the toolpath: {e}")))?;
+    if len > tooling::gcode::MAX_BYTES as u64 {
+        return Err(bad(CMD, "the G-code file exceeds 4 MiB"));
+    }
+    let bytes = solidcraft_io::vfs::read(&r.file, tooling::gcode::MAX_BYTES).map_err(|e| bad(CMD, format!("could not read the toolpath: {e}")))?;
+    let decoded = tooling::gcode::read(&String::from_utf8_lossy(&bytes)).map_err(|e| bad(CMD, e.to_string()))?;
+    if decoded.points.is_empty() {
+        return Err(bad(CMD, "the G-code file carries no moves"));
+    }
+    if decoded.points.len() > cam::MAX_SEGMENTS + 1 {
+        return Err(bad(CMD, format!("the G-code file carries more than {} moves", cam::MAX_SEGMENTS)));
+    }
+    let points: Vec<solidcraft_geom::Vec3> = decoded.points.iter().map(|c| solidcraft_geom::Vec3::new(c.x, c.y, c.z)).collect();
+    let cuts: Vec<bool> = decoded.points.iter().map(|c| c.cut).collect();
+    let toolpath = Toolpath::from_points(&points, &cuts).map_err(|e| cam_err(CMD, e))?;
+    let (min, max) = toolpath.bounds().ok_or_else(|| bad(CMD, "the toolpath has no bounds"))?;
+    let margin = r.allowance.unwrap_or(0.0);
+    if !margin.is_finite() || margin < 0.0 || margin > 1000.0 {
+        return Err(bad(CMD, "allowance must be between 0 and 1000 mm"));
+    }
+    let allowance = Allowance { plus_x: margin, minus_x: margin, plus_y: margin, minus_y: margin, plus_z: 0.0, minus_z: 0.0 };
+    let stock = Stock {
+        kind: cam::StockKind::Box {
+            x: (max[0] - min[0]).max(1.0),
+            y: (max[1] - min[1]).max(1.0),
+            z: (max[2] - min[2]).max(1.0),
+        },
+        origin: [(min[0] + max[0]) / 2.0, (min[1] + max[1]) / 2.0, min[2]],
+        allowance,
+    };
+    stock.check().map_err(|e| cam_err(CMD, e))?;
+    let tool = decoded.tools.first().map(|name| ToolRef { number: tool_number(name), entry: String::new(), name: name.clone() });
+    let warnings: Vec<String> = decoded.warnings.clone();
+    let segments = toolpath.len();
+
+    let id = match r.id {
+        Some(id) => {
+            let op = s.doc_mut().cam.find_operation_mut(id).ok_or_else(|| bad(CMD, format!("no CAM operation with id {id}")))?;
+            op.toolpath = Some(toolpath);
+            if op.stock.is_none() {
+                op.stock = Some(stock.clone());
+            }
+            if op.tool.is_none() {
+                op.tool = tool.clone();
+            }
+            id
+        }
+        None => {
+            let id = s.doc_mut().allocate_id().map_err(|e| bad(CMD, e.to_string()))?;
+            let stem = r.file.rsplit(['/', '\\']).next().unwrap_or(r.file.as_str());
+            let stem = stem.rsplit_once('.').map(|(s, _)| s).unwrap_or(stem);
+            let op = Operation {
+                id,
+                name: if stem.is_empty() { "Toolpath".into() } else { stem.to_string() },
+                tool: tool.clone(),
+                stock: Some(stock.clone()),
+                toolpath: Some(toolpath),
+                comment: None,
+            };
+            op.check().map_err(|e| cam_err(CMD, e))?;
+            s.doc_mut().cam.operations.push(op);
+            id
+        }
+    };
+    Ok(json!({
+        "id": id,
+        "segments": segments,
+        "tools": decoded.tools,
+        "warnings": warnings,
+        "stock": serde_json::to_value(&stock).map_err(|e| bad(CMD, e.to_string()))?,
+    }))
+}
+
+fn remove_toolpath(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "cam.toolpath.remove";
+    let r: IdOnly = req(CMD, p)?;
+    let op = s.doc_mut().cam.find_operation_mut(r.id).ok_or_else(|| bad(CMD, format!("no CAM operation with id {}", r.id)))?;
+    if op.toolpath.take().is_none() {
+        return Err(bad(CMD, format!("operation {} has no toolpath", r.id)));
+    }
+    Ok(json!({"removed": r.id}))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, default)]
+struct FixtureAdd {
+    path: String,
+    name: Option<String>,
+    origin: Option<[f64; 3]>,
+}
+
+fn add_fixture(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "cam.fixture.add";
+    let r: FixtureAdd = req(CMD, p)?;
+    path(CMD, &r.path)?;
+    let id = s.doc_mut().allocate_id().map_err(|e| bad(CMD, e.to_string()))?;
+    let stem = r.path.rsplit(['/', '\\']).next().unwrap_or(r.path.as_str());
+    let name = r.name.unwrap_or_else(|| stem.to_string());
+    let fixture = Fixture { id, name: name.clone(), path: r.path, origin: r.origin.unwrap_or([0.0; 3]) };
+    fixture.check().map_err(|e| cam_err(CMD, e))?;
+    s.doc_mut().cam.fixtures.push(fixture);
+    Ok(json!({"id": id, "name": name}))
+}
+
+fn remove_fixture(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "cam.fixture.remove";
+    let r: IdOnly = req(CMD, p)?;
+    let doc = s.doc_mut();
+    let before = doc.cam.fixtures.len();
+    doc.cam.fixtures.retain(|f| f.id != r.id);
+    if doc.cam.fixtures.len() == before {
+        return Err(bad(CMD, format!("no fixture with id {}", r.id)));
+    }
+    Ok(json!({"removed": r.id}))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FixturePlace {
+    id: u64,
+    origin: [f64; 3],
+}
+
+fn place_fixture(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "cam.fixture.place";
+    let r: FixturePlace = req(CMD, p)?;
+    let fixture = s.doc_mut().cam.fixtures.iter_mut().find(|f| f.id == r.id).ok_or_else(|| bad(CMD, format!("no fixture with id {}", r.id)))?;
+    fixture.origin = r.origin;
+    fixture.check().map_err(|e| cam_err(CMD, e))?;
+    Ok(json!({"id": r.id, "origin": r.origin}))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, default)]
+struct OriginSet {
+    position: Option<[f64; 3]>,
+    x_axis: Option<[f64; 3]>,
+    z_axis: Option<[f64; 3]>,
+}
+
+fn set_origin(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "cam.origin.set";
+    let r: OriginSet = req(CMD, p)?;
+    if r.position.is_none() && r.x_axis.is_none() && r.z_axis.is_none() {
+        return Err(bad(CMD, "give position, x_axis or z_axis"));
+    }
+    let origin = &mut s.doc_mut().cam.origin;
+    let mut next = WorkOrigin {
+        position: r.position.unwrap_or(origin.position),
+        x_axis: r.x_axis.unwrap_or(origin.x_axis),
+        z_axis: r.z_axis.unwrap_or(origin.z_axis),
+    };
+    next.check().map_err(|e| cam_err(CMD, e))?;
+    *origin = next;
+    Ok(json!({"origin": serde_json::to_value(&*origin).map_err(|e| bad(CMD, e.to_string()))?}))
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

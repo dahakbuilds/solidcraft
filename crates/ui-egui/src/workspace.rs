@@ -147,6 +147,7 @@ pub const SECTIONS: &[Section] = &[
     Section { tab: "INSERT", panel: "2D", promoted: 2, ids: &["sketch.insert_dxf", "sketch.insert_svg"] },
     Section { tab: "INSERT", panel: "LIBRARY", promoted: 3, ids: &["parts.fastener", "parts.library", "parts.resize", "parts.insert"] },
     Section { tab: "INSERT", panel: "LINKS", promoted: 2, ids: &["component.update_links", "component.break_link"] },
+    Section { tab: "CAM", panel: "SETUP", promoted: 3, ids: &["cam.operation.add", "cam.stock.set", "cam.toolpath.load"] },
     Section { tab: "CAM", panel: "TOOLING", promoted: 1, ids: &["tool.library.open"] },
     Section { tab: "CAM", panel: "SIMULATE", promoted: 1, ids: &["cam.simulate"] },
     Section { tab: "INSPECT", panel: "MEASURE", promoted: 3, ids: &["inspect.measure", "inspect.center_of_mass", "component.properties"] },
@@ -269,7 +270,10 @@ pub const SECTIONS: &[Section] = &[
 /// retain the engine label. Route these through `tr_label`, like other UI labels.
 pub const RIBBON_LABELS: &[(&str, &str)] = &[
     ("appearance.assign", "Appearance"),
+    ("cam.operation.add", "Operation"),
     ("cam.simulate", "Simulate"),
+    ("cam.stock.set", "Stock"),
+    ("cam.toolpath.load", "Load Path"),
     ("component.capture_position", "Capture Pos."),
     ("component.create", "New Comp."),
     ("component.from_bodies", "From Bodies"),
