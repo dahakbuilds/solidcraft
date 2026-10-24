@@ -74,7 +74,7 @@ pub fn tip_at(path: &Toolpath, progress: f64) -> Option<(Vec3, Vec3)> {
     for (a, b, len) in &chords {
         if want <= *len {
             let t = (want / len).clamp(0.0, 1.0);
-            return Some((a.lerp(*b, t), (*b - *a) / len));
+            return Some((a.lerp(*b, t), (*b - *a) / *len));
         }
         want -= len;
     }
@@ -117,7 +117,7 @@ pub fn controls(app: &mut SolveApp, ui: &mut Ui) {
         ui.checkbox(&mut app.tree.cam_sim.show_stock, tr("ui.cam_sim_stock"));
     });
     if app.tree.cam_sim.playing {
-        let dt = ui.ctx().input(|i| i.dt) as f64;
+        let dt = ui.ctx().input(|i| i.stable_dt) as f64;
         app.tree.cam_sim.progress += dt * app.tree.cam_sim.speed / length;
         if app.tree.cam_sim.progress >= 1.0 {
             app.tree.cam_sim.progress = 1.0;
