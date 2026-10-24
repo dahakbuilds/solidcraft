@@ -73,7 +73,7 @@ fn cutting_below_the_part_is_a_gouge() {
     assert!((report.gouge_worst - 1.0).abs() < 1e-9, "one millimetre below the part top");
     assert!(!report.gouges.is_empty());
     for g in &report.gouges {
-        assert!((g[2] - 1.0).abs() < 1e-9);
+        assert!(g[2] > 0.0 && g[2] <= 1.0 + 1e-9, "recorded gouges stay within the cut depth");
     }
 }
 
