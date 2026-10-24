@@ -48,7 +48,7 @@ fn families_lists_every_milling_family_with_its_schema() {
     let mut s = session();
     let out = s.execute("tool.families", &json!({})).unwrap();
     let list = out["families"].as_array().unwrap();
-    assert_eq!(list.len(), 8);
+    assert_eq!(list.len(), 12);
     assert_eq!(list[0]["id"], "end_mill_flat");
     for f in list {
         assert!(!f["params"].as_array().unwrap().is_empty(), "{}", f["id"]);

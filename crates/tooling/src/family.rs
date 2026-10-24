@@ -45,9 +45,13 @@ pub enum Family {
     ChamferMill,
     Countersink,
     Tap,
+    Keyway,
+    TSlot,
+    CornerRadius,
+    Counterbore,
 }
 
-pub const FAMILIES: [Family; 8] = [
+pub const FAMILIES: [Family; 12] = [
     Family::EndMillFlat,
     Family::EndMillBall,
     Family::EndMillBull,
@@ -56,6 +60,10 @@ pub const FAMILIES: [Family; 8] = [
     Family::ChamferMill,
     Family::Countersink,
     Family::Tap,
+    Family::Keyway,
+    Family::TSlot,
+    Family::CornerRadius,
+    Family::Counterbore,
 ];
 
 impl Family {
@@ -69,6 +77,10 @@ impl Family {
             Self::ChamferMill => "chamfer_mill",
             Self::Countersink => "countersink",
             Self::Tap => "tap",
+            Self::Keyway => "keyway",
+            Self::TSlot => "t_slot",
+            Self::CornerRadius => "corner_radius",
+            Self::Counterbore => "counterbore",
         }
     }
     pub fn parse(value: &str) -> Option<Self> {
@@ -84,6 +96,10 @@ impl Family {
             Self::ChamferMill => "Chamfer mill",
             Self::Countersink => "Countersink",
             Self::Tap => "Tap",
+            Self::Keyway => "Keyway cutter",
+            Self::TSlot => "T-slot cutter",
+            Self::CornerRadius => "Corner rounding end mill",
+            Self::Counterbore => "Counterbore",
         }
     }
     /// The family's parameter schema, in display order.
@@ -97,6 +113,10 @@ impl Family {
             ChamferMill => CHAMFER_MILL,
             Countersink => COUNTERSINK,
             Tap => TAP,
+            Keyway => KEYWAY,
+            TSlot => T_SLOT,
+            CornerRadius => CORNER_RADIUS,
+            Counterbore => COUNTERBORE,
         }
     }
 }
@@ -106,6 +126,7 @@ const FLAT_BALL: &[ParamSpec] = &[
     length_opt("flute_length", 0.1, 300.0, 20.0, "axial length of the cutting flutes"),
     length_opt("overall_length", 1.0, 600.0, 70.0, "tip to top of the tool"),
     length_opt("shank_diameter", 0.1, 100.0, 10.0, "clamp (arbor) diameter"),
+    angle("taper_angle", 0.0, 20.0, 0.0, "included draft angle of the tapered body (0 = straight)"),
 ];
 const BULL: &[ParamSpec] = &[
     length_opt("cutting_diameter", 0.1, 63.0, 10.0, "cutting diameter"),
@@ -113,6 +134,7 @@ const BULL: &[ParamSpec] = &[
     length_opt("flute_length", 0.1, 300.0, 20.0, "axial length of the cutting flutes"),
     length_opt("overall_length", 1.0, 600.0, 70.0, "tip to top of the tool"),
     length_opt("shank_diameter", 0.1, 100.0, 10.0, "clamp (arbor) diameter"),
+    angle("taper_angle", 0.0, 20.0, 0.0, "included draft angle of the tapered body (0 = straight)"),
 ];
 const DRILL: &[ParamSpec] = &[
     length_opt("cutting_diameter", 0.05, 63.0, 6.0, "drill diameter"),
@@ -150,6 +172,33 @@ const TAP: &[ParamSpec] = &[
     length_opt("thread_length", 0.5, 200.0, 20.0, "threaded length"),
     length_opt("overall_length", 1.0, 600.0, 60.0, "tip to top of the shank"),
     length_opt("shank_diameter", 0.1, 100.0, 4.0, "shank (tang) diameter"),
+];
+const KEYWAY: &[ParamSpec] = &[
+    length_opt("cutting_diameter", 1.0, 63.0, 6.0, "cutter diameter"),
+    length_opt("width", 0.5, 30.0, 3.0, "cut width (the key width)"),
+    length_opt("overall_length", 1.0, 600.0, 60.0, "tip to top of the shank"),
+    length_opt("shank_diameter", 0.1, 100.0, 4.0, "shank diameter"),
+];
+const T_SLOT: &[ParamSpec] = &[
+    length_opt("crossbar_diameter", 2.0, 63.0, 10.0, "diameter of the T crossbar"),
+    length_opt("crossbar_width", 1.0, 30.0, 4.0, "thickness of the crossbar"),
+    length_opt("shank_diameter", 0.5, 63.0, 6.0, "neck (shank) diameter"),
+    length_opt("overall_length", 1.0, 600.0, 60.0, "tip to top of the shank"),
+];
+const CORNER_RADIUS: &[ParamSpec] = &[
+    length_opt("cutting_diameter", 0.5, 63.0, 6.0, "body diameter"),
+    length_opt("corner_radius", 0.05, 30.0, 1.0, "concave corner radius"),
+    length_opt("flute_length", 0.1, 300.0, 15.0, "axial length of the cutting flutes"),
+    length_opt("overall_length", 1.0, 600.0, 60.0, "tip to top of the tool"),
+    length_opt("shank_diameter", 0.1, 100.0, 6.0, "clamp (arbor) diameter"),
+];
+const COUNTERBORE: &[ParamSpec] = &[
+    length_opt("pilot_diameter", 0.1, 63.0, 4.0, "pilot diameter"),
+    length_opt("pilot_length", 0.1, 100.0, 5.0, "pilot length ahead of the counterbore"),
+    length_opt("counterbore_diameter", 0.5, 100.0, 9.0, "counterbore diameter"),
+    length_opt("counterbore_depth", 0.1, 100.0, 6.0, "depth of the counterbore"),
+    length_opt("overall_length", 1.0, 600.0, 60.0, "tip to top of the shank"),
+    length_opt("shank_diameter", 0.1, 100.0, 6.0, "shank diameter"),
 ];
 
 /// The tangent of half an included angle given in degrees; validation keeps angles off 0 and 180.
@@ -194,12 +243,15 @@ pub fn validate_params(family: Family, params: &BTreeMap<String, f64>) -> Result
     let get = |name: &str| value(family, params, name).unwrap_or(f64::NAN);
     let ok = |b: bool, why: &str| if b { Ok(()) } else { Err(invalid(format!("invalid `{}` parameters: {why}", family.as_str()))) };
     match family {
-        Family::EndMillFlat => ok(get("flute_length") < get("overall_length"), "flute_length must be less than overall_length"),
+        Family::EndMillFlat => ok(get("flute_length") < get("overall_length"), "flute_length must be less than overall_length")
+            .and_then(|()| tapered_ok(get("cutting_diameter") / 2.0, get("flute_length"), get("taper_angle"))),
         Family::EndMillBall => ok(get("flute_length") >= get("cutting_diameter") / 2.0, "flute_length must reach at least the ball radius")
-            .and_then(|()| ok(get("flute_length") < get("overall_length"), "flute_length must be less than overall_length")),
+            .and_then(|()| ok(get("flute_length") < get("overall_length"), "flute_length must be less than overall_length"))
+            .and_then(|()| tapered_ok(get("cutting_diameter") / 2.0, get("flute_length") - get("cutting_diameter") / 2.0, get("taper_angle"))),
         Family::EndMillBull => ok(2.0 * get("corner_radius") < get("cutting_diameter"), "corner_radius must be less than the cutting radius")
             .and_then(|()| ok(get("flute_length") >= get("corner_radius"), "flute_length must reach at least the corner radius"))
-            .and_then(|()| ok(get("flute_length") < get("overall_length"), "flute_length must be less than overall_length")),
+            .and_then(|()| ok(get("flute_length") < get("overall_length"), "flute_length must be less than overall_length"))
+            .and_then(|()| tapered_ok(get("cutting_diameter") / 2.0, get("flute_length") - get("corner_radius"), get("taper_angle"))),
         Family::Drill => {
             let depth = get("cutting_diameter") / 2.0 / half_tan(get("point_angle"));
             ok(get("flute_length") >= depth, "flute_length must reach at least the point cone")
@@ -222,6 +274,27 @@ pub fn validate_params(family: Family, params: &BTreeMap<String, f64>) -> Result
                 .and_then(|()| ok(get("flute_length") < get("overall_length"), "flute_length must be less than overall_length"))
         }
         Family::Tap => ok(get("thread_length") < get("overall_length"), "thread_length must be less than overall_length"),
+        Family::Keyway => ok(get("width") < get("overall_length"), "width must be less than overall_length"),
+        Family::TSlot => ok(get("shank_diameter") < get("crossbar_diameter"), "the neck must be thinner than the crossbar")
+            .and_then(|()| ok(get("crossbar_width") < get("overall_length"), "crossbar_width must be less than overall_length")),
+        Family::CornerRadius => ok(2.0 * get("corner_radius") < get("cutting_diameter"), "corner_radius must be less than the body radius")
+            .and_then(|()| ok(get("flute_length") >= get("corner_radius"), "flute_length must reach at least the corner radius"))
+            .and_then(|()| ok(get("flute_length") < get("overall_length"), "flute_length must be less than overall_length")),
+        Family::Counterbore => ok(get("pilot_diameter") < get("counterbore_diameter"), "pilot_diameter must be less than counterbore_diameter")
+            .and_then(|()| ok(get("pilot_length") + get("counterbore_depth") < get("overall_length"), "pilot plus counterbore must fit within overall_length")),
+    }
+}
+
+/// A drafted (tapered) cutting body must not pinch to nothing: over its straight length `run`
+/// the radius shrinks by `run * tan(half(taper_angle))` and must stay positive.
+fn tapered_ok(radius: f64, run: f64, taper_angle: f64) -> Result<()> {
+    if taper_angle <= 0.0 {
+        return Ok(());
+    }
+    if radius - run * half_tan(taper_angle) > 0.0 {
+        Ok(())
+    } else {
+        Err(invalid("invalid taper_angle: the drafted body pinches to nothing before the flute ends"))
     }
 }
 

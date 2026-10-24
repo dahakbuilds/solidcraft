@@ -128,28 +128,31 @@ pub fn of(family: Family, params: &BTreeMap<String, f64>) -> Result<CutterProfil
         Family::EndMillFlat => {
             let r = get("cutting_diameter")? / 2.0;
             let fl = get("flute_length")?;
+            let top = r - fl * family::half_tan(get("taper_angle")?);
             segs.push(Segment::line(0.0, 0.0, r, 0.0, true));
-            segs.push(Segment::line(r, 0.0, r, fl, true));
+            segs.push(Segment::line(r, 0.0, top, fl, true));
             cutting_length = fl;
-            push_tail(&mut segs, r, fl, shank_r, overall);
+            push_tail(&mut segs, top, fl, shank_r, overall);
         }
         Family::EndMillBall => {
             let r = get("cutting_diameter")? / 2.0;
             let fl = get("flute_length")?;
+            let top = r - (fl - r) * family::half_tan(get("taper_angle")?);
             segs.push(Segment::arc(0.0, r, r, 0.0, 0.0, r, r, true));
-            segs.push(Segment::line(r, r, r, fl, true));
+            segs.push(Segment::line(r, r, top, fl, true));
             cutting_length = fl;
-            push_tail(&mut segs, r, fl, shank_r, overall);
+            push_tail(&mut segs, top, fl, shank_r, overall);
         }
         Family::EndMillBull => {
             let r = get("cutting_diameter")? / 2.0;
             let cr = get("corner_radius")?;
             let fl = get("flute_length")?;
+            let top = r - (fl - cr) * family::half_tan(get("taper_angle")?);
             segs.push(Segment::line(0.0, 0.0, r - cr, 0.0, true));
             segs.push(Segment::arc(r - cr, cr, cr, r - cr, 0.0, r, cr, true));
-            segs.push(Segment::line(r, cr, r, fl, true));
+            segs.push(Segment::line(r, cr, top, fl, true));
             cutting_length = fl;
-            push_tail(&mut segs, r, fl, shank_r, overall);
+            push_tail(&mut segs, top, fl, shank_r, overall);
         }
         Family::Drill => {
             let r = get("cutting_diameter")? / 2.0;
@@ -200,6 +203,44 @@ pub fn of(family: Family, params: &BTreeMap<String, f64>) -> Result<CutterProfil
             segs.push(Segment::line(r, 0.0, r, tl, true));
             cutting_length = tl;
             push_tail(&mut segs, r, tl, shank_r, overall);
+        }
+        Family::Keyway => {
+            let r = get("cutting_diameter")? / 2.0;
+            let w = get("width")?;
+            segs.push(Segment::line(0.0, 0.0, r, 0.0, true));
+            segs.push(Segment::line(r, 0.0, r, w, true));
+            cutting_length = w;
+            push_tail(&mut segs, r, w, shank_r, overall);
+        }
+        Family::TSlot => {
+            let rb = get("crossbar_diameter")? / 2.0;
+            let w = get("crossbar_width")?;
+            segs.push(Segment::line(0.0, 0.0, rb, 0.0, true));
+            segs.push(Segment::line(rb, 0.0, rb, w, true));
+            cutting_length = w;
+            push_tail(&mut segs, rb, w, shank_r, overall);
+        }
+        Family::CornerRadius => {
+            let r = get("cutting_diameter")? / 2.0;
+            let cr = get("corner_radius")?;
+            let fl = get("flute_length")?;
+            segs.push(Segment::line(0.0, 0.0, r - cr, 0.0, true));
+            segs.push(Segment::arc(r, 0.0, cr, r - cr, 0.0, r, cr, true));
+            segs.push(Segment::line(r, cr, r, fl, true));
+            cutting_length = fl;
+            push_tail(&mut segs, r, fl, shank_r, overall);
+        }
+        Family::Counterbore => {
+            let rp = get("pilot_diameter")? / 2.0;
+            let r = get("counterbore_diameter")? / 2.0;
+            let pl = get("pilot_length")?;
+            let cb = get("counterbore_depth")?;
+            segs.push(Segment::line(0.0, 0.0, rp, 0.0, true));
+            segs.push(Segment::line(rp, 0.0, rp, pl, true));
+            segs.push(Segment::line(rp, pl, r, pl, true));
+            segs.push(Segment::line(r, pl, r, pl + cb, true));
+            cutting_length = pl + cb;
+            push_tail(&mut segs, r, pl + cb, shank_r, overall);
         }
     }
     let max_radius = segs.iter().map(Segment::max_radius).fold(0.0_f64, f64::max);

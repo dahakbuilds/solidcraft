@@ -107,3 +107,47 @@ fn hostile_parameters_never_build_a_profile() {
     let huge = params(&[("cutting_diameter", 1000.0), ("flute_length", 20.0), ("overall_length", 70.0), ("shank_diameter", 10.0)]);
     assert!(of(Family::EndMillFlat, &huge).is_err());
 }
+
+#[test]
+fn tapered_end_mills_draft_the_body() {
+    // a 7° included draft on a 10 mm flat: the wall pinches by flute * tan(3.5°)
+    let p = params(&[("cutting_diameter", 10.0), ("flute_length", 20.0), ("overall_length", 70.0), ("shank_diameter", 10.0), ("taper_angle", 7.0)]);
+    let prof = of(Family::EndMillFlat, &p).unwrap();
+    assert!(approx(prof.max_radius, 5.0));
+    assert!(approx(prof.radius_at(10.0).unwrap(), 5.0 - 10.0 * (3.5f64.to_radians()).tan()));
+    // a ball nose keeps its sphere; only the wall above the equator is drafted
+    let p = params(&[("cutting_diameter", 10.0), ("flute_length", 20.0), ("overall_length", 50.0), ("shank_diameter", 10.0), ("taper_angle", 7.0)]);
+    let prof = of(Family::EndMillBall, &p).unwrap();
+    assert!(approx(prof.radius_at(5.0).unwrap(), 5.0));
+    assert!(approx(prof.radius_at(15.0).unwrap(), 5.0 - 10.0 * (3.5f64.to_radians()).tan()));
+    // a draft that pinches the body to nothing before the flute ends is refused
+    let p = params(&[("cutting_diameter", 10.0), ("flute_length", 100.0), ("overall_length", 120.0), ("shank_diameter", 10.0), ("taper_angle", 20.0)]);
+    assert!(of(Family::EndMillFlat, &p).is_err());
+}
+
+#[test]
+fn keyway_t_slot_corner_and_counterbore_build() {
+    let p = params(&[("cutting_diameter", 6.0), ("width", 3.0), ("overall_length", 60.0), ("shank_diameter", 4.0)]);
+    let prof = of(Family::Keyway, &p).unwrap();
+    assert!(approx(prof.cutting_length, 3.0));
+    assert!(approx(prof.radius_at(1.5).unwrap(), 3.0));
+
+    let p = params(&[("crossbar_diameter", 10.0), ("crossbar_width", 4.0), ("shank_diameter", 6.0), ("overall_length", 60.0)]);
+    let prof = of(Family::TSlot, &p).unwrap();
+    assert!(approx(prof.max_radius, 5.0));
+    assert!(approx(prof.radius_at(2.0).unwrap(), 5.0));
+    assert!(approx(prof.radius_at(10.0).unwrap(), 3.0));
+
+    // a concave corner: the nose is body_r - cr, and the arc reaches the body radius at z = cr
+    let p = params(&[("cutting_diameter", 6.0), ("corner_radius", 1.0), ("flute_length", 15.0), ("overall_length", 60.0), ("shank_diameter", 6.0)]);
+    let prof = of(Family::CornerRadius, &p).unwrap();
+    assert!(approx(prof.radius_at(0.0).unwrap(), 2.0));
+    assert!(approx(prof.radius_at(1.0).unwrap(), 3.0));
+    assert!(approx(prof.radius_at(10.0).unwrap(), 3.0));
+
+    let p = params(&[("pilot_diameter", 4.0), ("pilot_length", 5.0), ("counterbore_diameter", 9.0), ("counterbore_depth", 6.0), ("overall_length", 60.0), ("shank_diameter", 6.0)]);
+    let prof = of(Family::Counterbore, &p).unwrap();
+    assert!(approx(prof.cutting_length, 11.0));
+    assert!(approx(prof.radius_at(2.0).unwrap(), 2.0));
+    assert!(approx(prof.radius_at(8.0).unwrap(), 4.5));
+}
