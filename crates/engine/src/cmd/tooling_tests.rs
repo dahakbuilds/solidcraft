@@ -120,8 +120,8 @@ fn add_refuses_unknown_families_hostile_params_and_unbuilt_kinds() {
         s.execute("tool.library.add", &json!({"path": file.0, "family": "end_mill_flat", "label": "x", "params": flat_params(), "smuggled": 1}))
             .is_err()
     );
-    // nothing got in
-    assert_eq!(s.execute("tool.library.inspect", &json!({"path": file.0})).unwrap()["library"]["entries"].as_array().unwrap().len(), 0);
+    // only the partial add got in
+    assert_eq!(s.execute("tool.library.inspect", &json!({"path": file.0})).unwrap()["library"]["entries"].as_array().unwrap().len(), 1);
 }
 
 #[test]
@@ -134,7 +134,11 @@ fn profile_command_matches_the_kernel_math() {
     assert_eq!(out["cutting_length"], 20.0);
     assert_eq!(out["segments"][0]["type"], "arc");
     assert_eq!(out["segments"][0]["radius"], 5.0);
-    assert!(s.execute("tool.profile", &json!({"family": "end_mill_flat", "params": {"cutting_diameter": 10.0}})).is_err());
+    // omitted parameters fill from the schema defaults (a 10 mm flat: flute 20, overall 70)
+    let partial = s.execute("tool.profile", &json!({"family": "end_mill_flat", "params": {"cutting_diameter": 10.0}})).unwrap();
+    assert_eq!(partial["max_radius"], 5.0);
+    assert_eq!(partial["cutting_length"], 20.0);
+    assert_eq!(partial["overall_length"], 70.0);
 }
 
 #[test]
