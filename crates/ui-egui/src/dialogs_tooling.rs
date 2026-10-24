@@ -500,66 +500,70 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
             ui.separator();
             ui.vertical(|ui| {
                 ui.set_width(380.0);
-                egui::Grid::new("sc_tool_form").num_columns(2).spacing([10.0, 4.0]).min_col_width(150.0).show(ui, |ui| {
-                    ui.label("Label");
-                    ui.add(egui::TextEdit::singleline(&mut d.form.label).desired_width(200.0));
-                    ui.end_row();
-                    let names: Vec<String> = d.families.iter().map(|f| f.label.clone()).collect();
-                    let names: Vec<&str> = names.iter().map(String::as_str).collect();
-                    let before = d.form.family;
-                    ui.label("Family");
-                    egui::ComboBox::from_id_salt("sc_tool_family").selected_text(names.get(d.form.family).copied().unwrap_or("?")).show_ui(
-                        ui,
-                        |ui| {
-                            for (i, name) in names.iter().enumerate() {
-                                ui.selectable_value(&mut d.form.family, i, *name);
-                            }
-                        },
-                    );
-                    ui.end_row();
-                    if d.form.family != before {
-                        d.reset_params();
-                    }
-                    let specs: Vec<Value> = d.family().map(|f| f.params.clone()).unwrap_or_default();
-                    for (i, spec) in specs.iter().enumerate() {
-                        let name = spec["name"].as_str().unwrap_or_default();
-                        let unit = spec["unit"].as_str().unwrap_or("");
-                        let mut label = name.replace('_', " ");
-                        if !unit.is_empty() {
-                            label.push_str(&format!(" ({unit})"));
-                        }
-                        ui.label(capitalize(&label));
-                        if let Some(text) = d.form.params.get_mut(i) {
-                            ui.add(egui::TextEdit::singleline(text).desired_width(90.0));
-                        }
+                // cap the form height: with the holder rows the body would otherwise grow
+                // past the window frame and the Apply button below would lose its clicks
+                egui::ScrollArea::vertical().id_salt("sc_tool_form_scroll").max_height(240.0).show(ui, |ui| {
+                    egui::Grid::new("sc_tool_form").num_columns(2).spacing([10.0, 4.0]).min_col_width(150.0).show(ui, |ui| {
+                        ui.label("Label");
+                        ui.add(egui::TextEdit::singleline(&mut d.form.label).desired_width(200.0));
                         ui.end_row();
-                    }
-                    ui.label("Vendor");
-                    ui.add(egui::TextEdit::singleline(&mut d.form.vendor).desired_width(200.0));
-                    ui.end_row();
-                    ui.label("Product code");
-                    ui.add(egui::TextEdit::singleline(&mut d.form.product_id).desired_width(200.0));
-                    ui.end_row();
-                    let holder_names: Vec<String> = std::iter::once("None".to_string()).chain(d.holders.iter().map(|h| h.label.clone())).collect();
-                    let holder_names: Vec<&str> = holder_names.iter().map(String::as_str).collect();
-                    let before_holder = d.form.holder;
-                    ui.label("Holder");
-                    egui::ComboBox::from_id_salt("sc_tool_holder")
-                        .selected_text(holder_names.get(d.form.holder).copied().unwrap_or("?"))
-                        .show_ui(ui, |ui| {
-                            for (i, name) in holder_names.iter().enumerate() {
-                                ui.selectable_value(&mut d.form.holder, i, *name);
-                            }
-                        });
-                    ui.end_row();
-                    if d.form.holder != before_holder {
-                        d.fit_assembly();
-                    }
-                    if d.form.holder > 0 {
-                        ui.label("Stickout (mm)");
-                        ui.add(egui::TextEdit::singleline(&mut d.form.stickout).desired_width(90.0));
+                        let names: Vec<String> = d.families.iter().map(|f| f.label.clone()).collect();
+                        let names: Vec<&str> = names.iter().map(String::as_str).collect();
+                        let before = d.form.family;
+                        ui.label("Family");
+                        egui::ComboBox::from_id_salt("sc_tool_family").selected_text(names.get(d.form.family).copied().unwrap_or("?")).show_ui(
+                            ui,
+                            |ui| {
+                                for (i, name) in names.iter().enumerate() {
+                                    ui.selectable_value(&mut d.form.family, i, *name);
+                                }
+                            },
+                        );
                         ui.end_row();
-                    }
+                        if d.form.family != before {
+                            d.reset_params();
+                        }
+                        let specs: Vec<Value> = d.family().map(|f| f.params.clone()).unwrap_or_default();
+                        for (i, spec) in specs.iter().enumerate() {
+                            let name = spec["name"].as_str().unwrap_or_default();
+                            let unit = spec["unit"].as_str().unwrap_or("");
+                            let mut label = name.replace('_', " ");
+                            if !unit.is_empty() {
+                                label.push_str(&format!(" ({unit})"));
+                            }
+                            ui.label(capitalize(&label));
+                            if let Some(text) = d.form.params.get_mut(i) {
+                                ui.add(egui::TextEdit::singleline(text).desired_width(90.0));
+                            }
+                            ui.end_row();
+                        }
+                        ui.label("Vendor");
+                        ui.add(egui::TextEdit::singleline(&mut d.form.vendor).desired_width(200.0));
+                        ui.end_row();
+                        ui.label("Product code");
+                        ui.add(egui::TextEdit::singleline(&mut d.form.product_id).desired_width(200.0));
+                        ui.end_row();
+                        let holder_names: Vec<String> = std::iter::once("None".to_string()).chain(d.holders.iter().map(|h| h.label.clone())).collect();
+                        let holder_names: Vec<&str> = holder_names.iter().map(String::as_str).collect();
+                        let before_holder = d.form.holder;
+                        ui.label("Holder");
+                        egui::ComboBox::from_id_salt("sc_tool_holder")
+                            .selected_text(holder_names.get(d.form.holder).copied().unwrap_or("?"))
+                            .show_ui(ui, |ui| {
+                                for (i, name) in holder_names.iter().enumerate() {
+                                    ui.selectable_value(&mut d.form.holder, i, *name);
+                                }
+                            });
+                        ui.end_row();
+                        if d.form.holder != before_holder {
+                            d.fit_assembly();
+                        }
+                        if d.form.holder > 0 {
+                            ui.label("Stickout (mm)");
+                            ui.add(egui::TextEdit::singleline(&mut d.form.stickout).desired_width(90.0));
+                            ui.end_row();
+                        }
+                    });
                 });
                 ui.horizontal(|ui| {
                     let label = if d.adding { "Add tool" } else { "Apply" };
