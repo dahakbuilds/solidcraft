@@ -33,6 +33,14 @@ fn flat_end_mill_revolve_has_the_expected_band_counts() {
     assert_eq!(r.mesh.triangles.len(), 6 * steps);
     assert_eq!(r.face_roles, vec![Role::Cutting, Role::Cutting, Role::Shank]);
     assert_eq!(r.mesh.tri_face.last().copied(), Some(2));
+    // the side band above the flute (equal diameters, so collinear with the cutting wall) is
+    // painted Shank, not merged into the cutting role
+    for (i, face) in r.mesh.tri_face.iter().enumerate() {
+        let z = r.mesh.positions[r.mesh.triangles[i][0] as usize].z;
+        if z > 20.0 + 1e-9 && z < 70.0 - 1e-9 {
+            assert_eq!(r.face_roles[*face as usize], Role::Shank, "band above the flute is the shank");
+        }
+    }
     assert_wound_outward(&r.mesh);
 }
 
