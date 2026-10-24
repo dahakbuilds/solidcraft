@@ -17,6 +17,7 @@ pub mod browser;
 pub mod browser_cam;
 pub mod browser_canvas;
 pub mod browser_prompts;
+pub mod cam_sim;
 pub mod canvas;
 #[cfg(test)]
 mod colour_tokens_tests;

@@ -967,15 +967,31 @@ pub(crate) fn build_scene(app: &SolveApp) -> GpuScene {
         let feed = c4(Color32::from_rgb(pal.cam_feed.0, pal.cam_feed.1, pal.cam_feed.2));
         // CAM stock first: the see-through box or bar each operation starts from.
         let stock_col = [pal.stock.0, pal.stock.1, pal.stock.2, 90u8];
-        for op in &s.doc.cam.operations {
-            let Some(stock) = &op.stock else { continue };
-            let Ok(Some(mesh)) = solidcraft_engine::cam::stock_mesh(stock) else { continue };
-            for t in &mesh.triangles {
-                for &i in t {
-                    let (Some(p), Some(n)) = (mesh.positions.get(i as usize), mesh.normals.get(i as usize)) else { continue };
-                    sc.trans_tri(p.to_f32(), n.to_f32(), stock_col);
+        if app.tree.cam_sim.show_stock {
+            for op in &s.doc.cam.operations {
+                let Some(stock) = &op.stock else { continue };
+                let Ok(Some(mesh)) = solidcraft_engine::cam::stock_mesh(stock) else { continue };
+                for t in &mesh.triangles {
+                    for &i in t {
+                        let (Some(p), Some(n)) = (mesh.positions.get(i as usize), mesh.normals.get(i as usize)) else { continue };
+                        sc.trans_tri(p.to_f32(), n.to_f32(), stock_col);
+                    }
                 }
             }
+        }
+        // The player's cutter: a shank line up from the tip and a tip cross, at the
+        // slider's point of the first path that has one.
+        if app.tree.cam_sim.show_cutter
+            && let Some(path) = crate::cam_sim::active_path(app)
+            && let Some((tip, _dir)) = crate::cam_sim::tip_at(path, app.tree.cam_sim.progress)
+        {
+            let up = solidcraft_engine::geom::Vec3::Z;
+            let (x, y) = (solidcraft_engine::geom::Vec3::X, solidcraft_engine::geom::Vec3::Y);
+            let shank = c4(Color32::from_rgb(120, 126, 134));
+            let hot = c4(Color32::from_rgb(220, 60, 60));
+            sc.line(tip.to_f32(), (tip + up * 30.0).to_f32(), shank, 3.0, true);
+            sc.line((tip + x * 3.0).to_f32(), (tip - x * 3.0).to_f32(), hot, 2.0, true);
+            sc.line((tip + y * 3.0).to_f32(), (tip - y * 3.0).to_f32(), hot, 2.0, true);
         }
         for op in &s.doc.cam.operations {
             let Some(path) = &op.toolpath else { continue };

@@ -98,5 +98,6 @@ pub fn rows(app: &mut SolveApp, ui: &mut Ui) {
                 }
             }
         }
+        crate::cam_sim::controls(app, ui);
     });
 }

@@ -324,6 +324,8 @@ fn cam_machine_turns_gcode_into_a_body() {
     assert_eq!(out["gouges"], 0, "the cut stops at the part top");
     let names: Vec<String> = s.model.state().bodies.iter().map(|b| b.name.clone()).collect();
     assert!(names.contains(&body), "the body is in the design: {names:?} vs {body}");
+    // A ragged Z-map rim may keep it a mesh body; either way the part is in the design.
+    assert!(s.model.state().bodies.iter().any(|b| b.name == body));
 }
 
 #[test]

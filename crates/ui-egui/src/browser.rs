@@ -107,6 +107,8 @@ pub struct TreeState {
     /// The CAM tree is shown instead of the model browser (the second browser tab).
     /// It also brings the Manufacture ribbon tab up.
     pub cam_tab: bool,
+    /// The CAM player (slider, speed, cutter and stock toggles).
+    pub cam_sim: crate::cam_sim::CamSim,
     /// Row keys in drawing order this frame (for Shift ranges).
     order: Vec<String>,
     /// The previous frame's complete row order: a Shift click resolves its range here, since
@@ -888,8 +890,10 @@ fn browser_tabs(app: &mut SolveApp, ui: &mut egui::Ui) {
         }
         if response.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(label).clicked() {
             app.tree.cam_tab = cam_tab;
-            // Leaving the CAM tab takes the Manufacture ribbon tab away with it.
-            if !cam_tab && app.ui.tab == "MANUFACTURE" {
+            // Picking CAM raises the Manufacture ribbon; leaving it takes the tab away.
+            if cam_tab {
+                app.ui.tab = "MANUFACTURE".into();
+            } else if app.ui.tab == "MANUFACTURE" {
                 app.ui.tab = "MODEL".into();
             }
         }

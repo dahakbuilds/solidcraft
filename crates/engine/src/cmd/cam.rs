@@ -567,9 +567,15 @@ fn machine_stock(s: &mut Session, p: &Value) -> Result<Value> {
         .map(|b| b.name.clone())
         .find(|n| !before.contains(n))
         .ok_or_else(|| bad(CMD, "the machined surface came in with no body"))?;
-    let out = s.execute("mesh.convert", &json!({"body": new_body})).map_err(|e| bad(CMD, format!("the machined surface could not be converted: {e}")))?;
+    // Best effort: a watertight surface converts to a CAD solid; a Z-map surface with
+    // a ragged rim stays a mesh body (a failed conversion leaves the design alone).
+    let (body, converted) = match s.execute("mesh.convert", &json!({"body": new_body})) {
+        Ok(out) => (out.get("body").cloned().unwrap_or(json!(new_body)), true),
+        Err(_) => (json!(new_body), false),
+    };
     Ok(json!({
-        "body": out.get("body").cloned().unwrap_or(json!(new_body)),
+        "body": body,
+        "converted": converted,
         "removed_mm3": run.report.removed_mm3,
         "gouges": run.report.gouge_count,
         "collisions": run.report.collisions,
