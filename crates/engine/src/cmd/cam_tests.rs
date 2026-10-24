@@ -6,6 +6,17 @@ fn flat_params() -> Value {
     json!({"cutting_diameter": 10.0, "flute_length": 20.0, "overall_length": 70.0, "shank_diameter": 10.0})
 }
 
+/// A scratch G-code file with the given text.
+fn gcode_file(text: &str) -> String {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let path = solidcraft_io::vfs::temp_dir()
+        .join(format!("solidcraft-cam-{}-{}.nc", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)))
+        .to_string_lossy()
+        .into_owned();
+    solidcraft_io::vfs::write(&path, text.as_bytes()).unwrap();
+    path
+}
+
 #[test]
 fn cam_simulate_reports_a_gouge_below_the_part() {
     let mut s = Session::default();
@@ -98,4 +109,76 @@ fn cam_simulate_refuses_hostile_requests() {
     );
     // inverted stock
     assert!(s.execute("cam.simulate", &json!({"family": "end_mill_flat", "params": flat_params(), "path": [[0, 0, 1], [1, 1, 1]], "stock": {"min": [0, 0, 5], "max": [10, 10, 4]}, "cell": 1})).is_err());
+}
+
+#[test]
+fn cam_simulate_replays_a_gcode_file() {
+    let mut s = Session::default();
+    let file = gcode_file("O1001\nG21 G90\nG0 X5 Y20 Z12\nG1 Z4 F200\nG1 X35 Y20\nG0 Z12\nM30\n");
+    let out = s
+        .execute(
+            "cam.simulate",
+            &json!({
+                "family": "end_mill_flat",
+                "params": flat_params(),
+                "file": file,
+                "stock": {"min": [0, 0, 0], "max": [40, 40, 10]},
+                "part_top": 5,
+                "cell": 0.5,
+            }),
+        )
+        .unwrap();
+    assert!(out["gouges"].as_u64().unwrap() > 0, "{out}");
+    assert!((out["gouge_worst_mm"].as_f64().unwrap() - 1.0).abs() < 1e-6);
+    assert!(out["removed_mm3"].as_f64().unwrap() > 0.0);
+    assert!(out["warnings"].as_array().unwrap().is_empty(), "{out}");
+}
+
+#[test]
+fn cam_simulate_gcode_keeps_reader_warnings() {
+    let mut s = Session::default();
+    let file = gcode_file("G1 X1 Y1 Q5\n");
+    let out = s
+        .execute(
+            "cam.simulate",
+            &json!({
+                "family": "end_mill_flat",
+                "params": flat_params(),
+                "file": file,
+                "stock": {"min": [0, 0, 0], "max": [40, 40, 10]},
+                "cell": 0.5,
+            }),
+        )
+        .unwrap();
+    assert!(out["warnings"].as_array().unwrap().iter().any(|w| w.as_str().is_some_and(|w| w.contains("`Q`"))), "{out}");
+}
+
+#[test]
+fn cam_simulate_gcode_refuses_bad_requests() {
+    let mut s = Session::default();
+    let stock = json!({"min": [0, 0, 0], "max": [10, 10, 5]});
+    let file = gcode_file("G1 X1 Y1\n");
+    let base = json!({"family": "end_mill_flat", "params": flat_params(), "stock": stock, "cell": 1});
+    // both sources at once
+    let mut both = base.clone();
+    both["path"] = json!([[0, 0, 1]]);
+    both["file"] = json!(file);
+    assert!(s.execute("cam.simulate", &both).is_err());
+    // neither source
+    assert!(s.execute("cam.simulate", &base).is_err());
+    // unknown format
+    let mut cls = base.clone();
+    cls["file"] = json!(file);
+    cls["format"] = json!("cls");
+    assert!(s.execute("cam.simulate", &cls).is_err());
+    // a file that is not there
+    let mut missing = base.clone();
+    missing["file"] = json!("solidcraft-no-such-toolpath.nc");
+    assert!(s.execute("cam.simulate", &missing).is_err());
+    // arcs are refused with a clear message
+    let arcs = gcode_file("G2 X1 Y1 I1 J1\n");
+    let mut arc = base.clone();
+    arc["file"] = json!(arcs);
+    let err = s.execute("cam.simulate", &arc).unwrap_err().to_string();
+    assert!(err.contains("not supported yet: arc moves"), "{err}");
 }

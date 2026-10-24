@@ -12,6 +12,7 @@
 
 pub mod assembly;
 pub mod family;
+pub mod gcode;
 pub mod holder;
 pub mod import;
 pub mod mesh;

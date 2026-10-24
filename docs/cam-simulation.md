@@ -80,15 +80,37 @@ stable across that swap.
 
 - `path` points are `[x, y, z]` or `{x, y, z, cut?}`; the first point is a position, and
   a move cuts unless it says `cut: false` (a rapid).
+- Instead of `path`, give `file` (with `format: "gcode"`, the default): a post-processed
+  G-code file is read and decoded to the same tip path — see below.
 - `part_top` defaults to the stock top, which turns the run into a pure "don't touch
   anything" check.
 - `cell` defaults to the footprint's long side / 200, clamped to the grid limits.
 - The report: `removed_mm3`, `gouges`, `gouge_worst_mm`, `gouge_points`,
-  `remaining_cells`, `remaining_worst_mm`, `collisions`, `samples`, `grid`.
+  `remaining_cells`, `remaining_worst_mm`, `collisions`, `samples`, `warnings`, `grid`.
 
 Everything is bounded: at most 384×384 cells, 100 000 path points, and a combined
 sample × cell-touch work budget that refuses a too-fine path up front instead of
 grinding for minutes.
+
+## Reading G-code
+
+`solidcraft_tooling::gcode::read` decodes the flat linear subset of RS-274 that posts
+emit for 2.5-D milling: absolute (G90) and incremental (G91) moves, rapids (G0) and
+feeds (G1), millimetres or inches (G21/G20), `;` and `(…)` comments, tool words with
+`M6` changes, and `M2`/`M30` ends. Spindle, coolant, feed-rate and selector words are
+ignored with a capped warning list. Anything that would silently drop cutting motion —
+arcs (G2/G3), canned cycles (G73–G89), return-to-home (G28) — is refused with a clear
+"not supported yet" error rather than guessed at: a simulator that loses a move would
+hide exactly the gouge it was asked to find. File size, line count and point count are
+all capped.
+
+```json
+{"command": "cam.simulate", "params": {
+  "family": "end_mill_flat", "params": { "…": "…" },
+  "file": "pocket.nc", "format": "gcode",
+  "stock": {"min": [0, 0, 0], "max": [60, 60, 10]}, "part_top": 5
+}}
+```
 
 ## The CAM Simulation window
 
@@ -104,8 +126,8 @@ runs no math of its own.
 
 ## Roadmap
 
-1. **G-code / CLSF reader** so a post-processed file can be replayed directly
-   (`cam.simulate` already takes the same shape a CL file decodes to).
+1. **CLSF reader** beside the G-code one (the dialect `cam.simulate` already matches),
+   and **tool numbers mapped to library entries** so a file's `T2` picks the right tool.
 2. **Part from the design**: take the active body's tessellation and build the part
    Z-map from it, instead of a flat `part_top`.
 3. **Imported toolpaths in the window**: a file picker beside the pocket preset.
