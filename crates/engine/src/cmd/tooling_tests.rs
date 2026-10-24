@@ -284,6 +284,20 @@ fn entries_carry_holder_and_stickout() {
 }
 
 #[test]
+fn seed_adds_the_starter_pack_once() {
+    let mut s = session();
+    let file = File::new();
+    create(&mut s, &file);
+    let out = s.execute("tool.library.seed", &json!({"path": file.0})).unwrap();
+    assert_eq!(out["added"], 6, "{out}");
+    assert_eq!(out["entries"], 6);
+    // content-addressed ids make a second seeding a no-op
+    let out = s.execute("tool.library.seed", &json!({"path": file.0})).unwrap();
+    assert_eq!(out["added"], 0);
+    assert_eq!(out["entries"], 6);
+}
+
+#[test]
 fn import_gtc_adds_tools_and_reports_skips() {
     let mut s = session();
     let lib = File::new();

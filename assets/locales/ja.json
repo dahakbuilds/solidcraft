@@ -967,6 +967,7 @@
   "cmd.tool_library_inspect": "ツールライブラリを確認",
   "cmd.tool_library_open": "ツールライブラリ",
   "cmd.tool_library_remove": "ライブラリからツールを削除",
+  "cmd.tool_library_seed": "スターターツールを追加",
   "cmd.tool_profile": "カッタープロファイル",
   "cmd.view_ambient_occlusion": "アンビエントオクルージョン",
   "cmd.view_apply": "名前付きビューを復元",

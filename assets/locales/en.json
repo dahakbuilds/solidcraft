@@ -967,6 +967,7 @@
   "cmd.tool_library_inspect": "Inspect Tool Library",
   "cmd.tool_library_open": "Tool Library",
   "cmd.tool_library_remove": "Remove Tool From Library",
+  "cmd.tool_library_seed": "Seed Starter Tools",
   "cmd.tool_profile": "Cutter Profile",
   "cmd.view_ambient_occlusion": "Ambient Occlusion",
   "cmd.view_apply": "Restore Named View",

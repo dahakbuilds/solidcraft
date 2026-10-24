@@ -334,7 +334,7 @@ fn match_holder(text: &str) -> Option<holder::HolderType> {
 
 /// Convert the given parameters to millimetres, validate them against the family, and
 /// fill every schema default the file left out.
-fn fill_params(family: Family, given: BTreeMap<String, f64>, unit_inch: bool) -> std::result::Result<BTreeMap<String, f64>, String> {
+pub(crate) fn fill_params(family: Family, given: BTreeMap<String, f64>, unit_inch: bool) -> std::result::Result<BTreeMap<String, f64>, String> {
     let mut params = BTreeMap::new();
     for spec in family.schema() {
         let value = match given.get(spec.name) {

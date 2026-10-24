@@ -4,7 +4,8 @@
 //! revolved [cutter profile](profile) the CAM math will later use; a [library](ToolLibrary) is a
 //! portable JSON file of entries with content revisions, provenance and vendor identity. All
 //! lengths are millimetres and all angles degrees, whatever unit an import started from.
-//! Importers (GTC/ISO 13399 packages, vendor STEP+JSON) map vendor data onto these types; the
+//! The [import](import) module maps vendor data (GTC/p21 CAM tool files, tool JSON) onto
+//! these types and the [starter](starter) module seeds a fresh library; the
 //! crate never touches the filesystem, the network or the UI — the engine commands own file access.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
@@ -16,6 +17,7 @@ pub mod import;
 pub mod mesh;
 pub mod model;
 pub mod profile;
+pub mod starter;
 
 pub use assembly::Assembly;
 pub use family::{Family, ParamSpec, ParamUnit};
@@ -24,6 +26,7 @@ pub use import::{ImportReport, ImportedTool, Skipped};
 pub use mesh::{Revolved, Role};
 pub use model::{Connection, ItemKind, Provenance, ToolEntry, ToolLibrary};
 pub use profile::{CutterProfile, Segment};
+pub use starter::starter_pack;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ToolingError {

@@ -29,6 +29,8 @@ pub static COMMANDS: &[CommandSpec] = &[
         .params("path, family, label, params {…}, unit? mm|inch, kind? cutting, vendor?, product_id?, product_url?, machine_connection? {standard,size}, work_connection?, notes?, provenance?; all lengths stored in mm"),
     CommandSpec::new("tool.library.import", "Import Tools", import_tools).icon("import").noundo().doc_only()
         .params("path (library), file, format? gtc|json (guessed from the extension), unit? mm|inch (for GTC files without a UNIT record), vendor?; adds every tool the file describes and reports each skip; GTC covers .gtc/.p21/.tl/.tpt"),
+    CommandSpec::new("tool.library.seed", "Seed Starter Tools", seed).icon("import").noundo().doc_only()
+        .params("path (library); adds the built-in starter pack of common milling cutters, skipping any already present"),
     CommandSpec::new("tool.library.edit", "Edit Tool Library Entry", edit).icon("import").noundo().doc_only()
         .params("path, entry (current id), plus any add fields to replace (params replaces the whole set); the entry keeps its content revision, so its id may change"),
     CommandSpec::new("tool.library.remove", "Remove Tool From Library", remove).icon("delete").noundo().doc_only()
@@ -409,6 +411,7 @@ struct Open {
 fn open(_s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "tool.library.open";
     let request: Open = serde_json::from_value(p.clone()).map_err(|e| bad(CMD, e.to_string()))?;
+    let fresh_default = request.path.is_none();
     let text = match request.path {
         Some(text) => {
             path(CMD, &text)?;
@@ -426,7 +429,11 @@ fn open(_s: &mut Session, p: &Value) -> Result<Value> {
         {
             return Err(bad(CMD, format!("could not create the tool library folder: {e}")));
         }
-        let library = ToolLibrary::new(&default_id(), &default_name()).map_err(|e| bad(CMD, e.to_string()))?;
+        let mut library = ToolLibrary::new(&default_id(), &default_name()).map_err(|e| bad(CMD, e.to_string()))?;
+        // A brand-new default library starts with the starter pack so the window is not empty.
+        if fresh_default {
+            library.entries = tooling::starter::starter_pack(&library.id).map_err(|e| bad(CMD, e.to_string()))?;
+        }
         if let Err(e) = write_library(CMD, &text, &library, false)
             && !solidcraft_io::vfs::exists(&text)
         {
@@ -646,6 +653,33 @@ fn import_tools(_s: &mut Session, p: &Value) -> Result<Value> {
         write_library(CMD, &request.path, &library, true)?;
     }
     Ok(json!({"imported": imported, "skipped": skipped, "entries": library.entries.len()}))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Seed {
+    path: String,
+}
+
+/// Add the built-in starter pack to a library. Entry ids are content-addressed, so
+/// seeding twice (or after the user deleted a tool and wants it back) is harmless.
+fn seed(_s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "tool.library.seed";
+    let request: Seed = serde_json::from_value(p.clone()).map_err(|e| bad(CMD, e.to_string()))?;
+    path(CMD, &request.path)?;
+    let mut library = read_library(CMD, &request.path)?;
+    let mut added = 0usize;
+    for entry in tooling::starter::starter_pack(&library.id).map_err(|e| bad(CMD, e.to_string()))? {
+        if library.find(&entry.id).is_some() {
+            continue;
+        }
+        library.entries.push(entry);
+        added += 1;
+    }
+    if added > 0 {
+        write_library(CMD, &request.path, &library, true)?;
+    }
+    Ok(json!({"added": added, "entries": library.entries.len()}))
 }
 
 fn edit(_s: &mut Session, p: &Value) -> Result<Value> {
