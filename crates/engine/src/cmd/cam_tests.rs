@@ -8,7 +8,7 @@ fn flat_params() -> Value {
 
 #[test]
 fn cam_simulate_reports_a_gouge_below_the_part() {
-    let s = Session::default();
+    let mut s = Session::default();
     let out = s
         .execute(
             "cam.simulate",
@@ -31,7 +31,7 @@ fn cam_simulate_reports_a_gouge_below_the_part() {
 
 #[test]
 fn cam_simulate_passes_a_clean_pocket() {
-    let s = Session::default();
+    let mut s = Session::default();
     let out = s
         .execute(
             "cam.simulate",
@@ -52,7 +52,7 @@ fn cam_simulate_passes_a_clean_pocket() {
 
 #[test]
 fn cam_simulate_flags_a_rapid_crash() {
-    let s = Session::default();
+    let mut s = Session::default();
     let out = s
         .execute(
             "cam.simulate",
@@ -71,7 +71,7 @@ fn cam_simulate_flags_a_rapid_crash() {
 
 #[test]
 fn cam_simulate_refuses_hostile_requests() {
-    let s = Session::default();
+    let mut s = Session::default();
     let stock = json!({"min": [0, 0, 0], "max": [10, 10, 5]});
     // empty path
     assert!(s.execute("cam.simulate", &json!({"family": "end_mill_flat", "params": flat_params(), "path": [], "stock": stock, "cell": 1})).is_err());

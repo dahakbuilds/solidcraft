@@ -11,9 +11,7 @@ fn flat_entry() -> serde_json::Value {
 }
 
 fn open_with_tool(h: &mut Harness) {
-    let mut d = super::CamSimPanel::default();
-    d.entries = vec![flat_entry()];
-    d.tool = 1;
+    let d = super::CamSimPanel { entries: vec![flat_entry()], tool: 1, ..Default::default() };
     h.app.camsim = Some(d);
     h.frames(2);
 }
