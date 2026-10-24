@@ -455,6 +455,12 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
     }
     let closed = ui_kit::Window::new(egui::Id::new("sc_tool_library"), "library", tr_label("Tool Library")).cards(4.5).show_body(ctx, |ui| {
         let t = Tokens::get();
+        // Grow with the window: the columns take the body height the ui_kit window allows its
+        // scrollable body, minus the path row, the search/button rows and the zoom row, so the
+        // whole form fits without nested scrolling on a tall screen and still fits a short one.
+        let body_h = ctx.content_rect().height() - t.form_header_height - t.form_footer_height - t.space_24 * 2.0;
+        let col_h = (body_h - 96.0).clamp(170.0, 400.0);
+        let preview_side = (col_h - 30.0).clamp(140.0, PREVIEW_PT);
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new(&d.path).color(t.text_dim).small());
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -482,7 +488,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
             ui.vertical(|ui| {
                 ui.set_width(280.0);
                 ui.add(egui::TextEdit::singleline(&mut d.search).hint_text("Search tools").desired_width(270.0));
-                egui::ScrollArea::vertical().max_height(380.0).auto_shrink([false, false]).show(ui, |ui| {
+                egui::ScrollArea::vertical().max_height((col_h - 60.0).max(100.0)).auto_shrink([false, false]).show(ui, |ui| {
                     let rows = d.filtered();
                     if rows.is_empty() {
                         ui.label(RichText::new("no tools match").color(t.text_dim).italics());
@@ -548,7 +554,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                 ui.set_width(380.0);
                 // cap the form height: with the holder rows the body would otherwise grow
                 // past the window frame and the Apply button below would lose its clicks
-                egui::ScrollArea::vertical().id_salt("sc_tool_form_scroll").max_height(400.0).show(ui, |ui| {
+                egui::ScrollArea::vertical().id_salt("sc_tool_form_scroll").max_height((col_h - 30.0).max(140.0)).show(ui, |ui| {
                     egui::Grid::new("sc_tool_form").num_columns(2).spacing([10.0, 4.0]).min_col_width(150.0).show(ui, |ui| {
                         ui.label("Label");
                         ui.add(egui::TextEdit::singleline(&mut d.form.label).desired_width(200.0));
@@ -626,7 +632,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
             ui.separator();
             ui.vertical(|ui| {
                 d.refresh_preview(ui.ctx());
-                let resp = ui.allocate_response(Vec2::new(PREVIEW_PT, PREVIEW_PT), Sense::drag());
+                let resp = ui.allocate_response(Vec2::splat(preview_side), Sense::drag());
                 if resp.dragged() {
                     let dd = resp.drag_delta();
                     d.cam.yaw += dd.x as f64 * 0.01;
