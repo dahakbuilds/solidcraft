@@ -1895,6 +1895,7 @@
   "ui.dark": "Dark",
   "ui.default_modelling_orientation": "Default modelling orientation",
   "ui.delete": "Delete",
+  "ui.delete_tool": "Delete tool",
   "ui.depth": "Depth",
   "ui.design": "Design",
   "ui.design_properties.author": "Author",
