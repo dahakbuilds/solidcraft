@@ -642,6 +642,7 @@
   "cmd.browser_rename_group": "重命名组",
   "cmd.browser_ungroup": "取消编组",
   "cmd.browser_visibility": "显示/隐藏",
+  "cmd.cam_simulate": "模拟刀具路径",
   "cmd.canvas_calibrate": "校准画布",
   "cmd.canvas_decal": "贴花",
   "cmd.canvas_delete": "删除画布",
