@@ -57,7 +57,15 @@ fn the_window_adds_edits_and_deletes_a_tool() {
     h.step(&json!({"widget": "Apply"})).unwrap();
     h.frames(2);
     assert!(h.widget("10 mm flat short").is_some());
-    assert!(h.widget("10 mm flat").is_none(), "the old label is gone");
+    {
+        let d = h.app.tooling.as_ref().unwrap();
+        assert!(
+            h.widget("10 mm flat").is_none(),
+            "the old label is gone; error {:?}, labels {:?}",
+            d.error,
+            d.entries().iter().map(|e| e["label"].as_str().unwrap_or("?").to_string()).collect::<Vec<_>>()
+        );
+    }
     h.step(&json!({"widget": "Delete"})).unwrap();
     h.frames(2);
     assert!(h.widget("10 mm flat short").is_none(), "the tool is gone");
