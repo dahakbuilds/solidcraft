@@ -382,6 +382,7 @@ pub struct Window<'a> {
     escape_closes: bool,
     closeable: bool,
     width: f32,
+    height: f32,
     body_padding: bool,
     page_rows: f32,
     page_padding: egui::Vec2,
@@ -404,6 +405,7 @@ impl<'a> Window<'a> {
             escape_closes: true,
             closeable: true,
             width: Tokens::get().form_card_width * 1.5,
+            height: 0.0,
             body_padding: true,
             page_rows: 16.0,
             page_padding: vec2(Tokens::get().space_16, Tokens::get().space_16),
@@ -448,6 +450,15 @@ impl<'a> Window<'a> {
     pub fn cards(mut self, cards: f32) -> Self {
         if cards.is_finite() && cards > 0.0 {
             self.width = Tokens::get().form_card_width * cards.min(16.0);
+        }
+        self
+    }
+
+    /// The height the card starts at. An area keeps the size of its first frame, so a tall body
+    /// must declare its room up front; the card still shrinks to content below this height.
+    pub fn height(mut self, height: f32) -> Self {
+        if height.is_finite() && height > 0.0 {
+            self.height = height;
         }
         self
     }
@@ -511,7 +522,6 @@ impl<'a> Window<'a> {
                 if self.body_padding {
                     let height =
                         (dimension(ui.ctx().content_rect().height()) - t.form_header_height - t.form_footer_height - t.space_24 * 2.0).max(0.0);
-                    eprintln!("DBG panel body height cap {height} content_rect {:?}", ui.ctx().content_rect());
                     egui::ScrollArea::vertical()
                         .id_salt("window_body")
                         .max_height(height)
@@ -583,6 +593,7 @@ impl<'a> Window<'a> {
             .frame(frame)
             .fade_in(false)
             .fade_out(false);
+        let window = if self.height > 0.0 { window.default_height(self.height) } else { window };
         let window = match (self.anchor, self.placed) {
             (Some((align, offset)), _) => window.anchor(align, offset),
             (None, Some((pivot, pos))) => window.pivot(pivot).default_pos(pos),
