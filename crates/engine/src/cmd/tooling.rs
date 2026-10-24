@@ -27,6 +27,8 @@ pub static COMMANDS: &[CommandSpec] = &[
         .params("path; returns the validated library with entry ids and content revisions"),
     CommandSpec::new("tool.library.add", "Add Tool To Library", add).icon("import").noundo().doc_only()
         .params("path, family, label, params {…}, unit? mm|inch, kind? cutting, vendor?, product_id?, product_url?, machine_connection? {standard,size}, work_connection?, notes?, provenance?; all lengths stored in mm"),
+    CommandSpec::new("tool.library.import", "Import Tools", import_tools).icon("import").noundo().doc_only()
+        .params("path (library), file, format? gtc|json (guessed from the extension), unit? mm|inch (for GTC files without a UNIT record), vendor?; adds every tool the file describes and reports each skip; GTC covers .gtc/.p21/.tl/.tpt"),
     CommandSpec::new("tool.library.edit", "Edit Tool Library Entry", edit).icon("import").noundo().doc_only()
         .params("path, entry (current id), plus any add fields to replace (params replaces the whole set); the entry keeps its content revision, so its id may change"),
     CommandSpec::new("tool.library.remove", "Remove Tool From Library", remove).icon("delete").noundo().doc_only()
@@ -549,6 +551,100 @@ fn add(_s: &mut Session, p: &Value) -> Result<Value> {
     library.validate().map_err(|e| bad(cmd, e.to_string()))?;
     write_library(cmd, &request.path, &library, true)?;
     Ok(json!({"entry": entry.id, "revision": entry.revision, "entries": library.entries.len()}))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Import {
+    path: String,
+    file: String,
+    #[serde(default)]
+    format: Option<String>,
+    #[serde(default)]
+    unit: Option<String>,
+    #[serde(default)]
+    vendor: Option<String>,
+}
+
+/// Read a vendor file (GTC/p21 or tool JSON) and add every tool it describes. A tool that
+/// is already in the library, or that fails validation, is reported as a skip; the file
+/// stays untouched and the library is written only when something was imported.
+fn import_tools(_s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "tool.library.import";
+    let request: Import = serde_json::from_value(p.clone()).map_err(|e| bad(CMD, e.to_string()))?;
+    path(CMD, &request.path)?;
+    path(CMD, &request.file)?;
+    let format = match request.format.as_deref() {
+        Some(f) => f.to_ascii_lowercase(),
+        None => {
+            let lower = request.file.to_ascii_lowercase();
+            if lower.ends_with(".json") {
+                "json".to_string()
+            } else if [".gtc", ".p21", ".tl", ".tpt"].iter().any(|ext| lower.ends_with(ext)) {
+                "gtc".to_string()
+            } else {
+                return Err(bad(CMD, "cannot guess the format from the file extension; pass `format` (gtc or json)"));
+            }
+        }
+    };
+    let unit_inch = match request.unit.as_deref().unwrap_or("mm") {
+        "mm" => false,
+        "inch" => true,
+        other => return Err(bad(CMD, format!("unit must be mm or inch, not `{other}`"))),
+    };
+    let len = solidcraft_io::vfs::len(&request.file).map_err(|e| bad(CMD, format!("could not read the import file: {e}")))?;
+    if len > tooling::model::MAX_BYTES as u64 {
+        return Err(bad(CMD, "the import file exceeds 8 MiB"));
+    }
+    let bytes = solidcraft_io::vfs::read(&request.file, tooling::model::MAX_BYTES).map_err(|e| bad(CMD, format!("could not read the import file: {e}")))?;
+    let text = String::from_utf8_lossy(&bytes);
+    let report = match format.as_str() {
+        "gtc" => tooling::import::parse_gtc(&text, unit_inch),
+        "json" => tooling::import::parse_json(&text).map_err(|e| bad(CMD, e.to_string()))?,
+        other => return Err(bad(CMD, format!("unknown import format `{other}` (gtc or json)"))),
+    };
+    let mut library = read_library(CMD, &request.path)?;
+    let mut skipped: Vec<Value> = report.skipped.iter().map(|s| json!({"what": s.what, "why": s.why})).collect();
+    let mut imported = 0usize;
+    for tool in report.tools {
+        let label = tool.label.clone();
+        let mut entry = ToolEntry {
+            id: String::new(),
+            revision: String::new(),
+            kind: ItemKind::Cutting,
+            family: tool.family.as_str().to_string(),
+            label,
+            vendor: tool.vendor.or(request.vendor.clone()),
+            product_id: tool.product_id,
+            product_url: None,
+            params: tool.params,
+            holder_type: tool.holder_type,
+            stickout: tool.stickout,
+            machine_connection: None,
+            work_connection: None,
+            notes: tool.notes,
+            provenance: Provenance::default(),
+            vendor_properties: tool.vendor_properties,
+        };
+        match entry.assign_id(&library.id) {
+            Ok(()) => {}
+            Err(e) => {
+                skipped.push(json!({"what": entry.label, "why": e.to_string()}));
+                continue;
+            }
+        }
+        if library.find(&entry.id).is_some() {
+            skipped.push(json!({"what": entry.label, "why": "an identical entry is already in the library"}));
+            continue;
+        }
+        library.entries.push(entry);
+        imported += 1;
+    }
+    if imported > 0 {
+        library.validate().map_err(|e| bad(CMD, e.to_string()))?;
+        write_library(CMD, &request.path, &library, true)?;
+    }
+    Ok(json!({"imported": imported, "skipped": skipped, "entries": library.entries.len()}))
 }
 
 fn edit(_s: &mut Session, p: &Value) -> Result<Value> {

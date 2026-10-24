@@ -965,6 +965,7 @@
   "cmd.tool_library_add": "Add Tool To Library",
   "cmd.tool_library_create": "Create Tool Library",
   "cmd.tool_library_edit": "Edit Tool Library Entry",
+  "cmd.tool_library_import": "Import Tools",
   "cmd.tool_library_inspect": "Inspect Tool Library",
   "cmd.tool_library_open": "Tool Library",
   "cmd.tool_library_remove": "Remove Tool From Library",

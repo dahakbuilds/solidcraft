@@ -33,6 +33,14 @@ fn flat_params() -> Value {
 fn create(s: &mut Session, file: &File) {
     s.execute("tool.library.create", &json!({"path": file.0})).unwrap();
 }
+/// A scratch file with a chosen extension (the import source is not a library).
+fn file_named(ext: &str) -> String {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    solidcraft_io::vfs::temp_dir()
+        .join(format!("solidcraft-import-{}-{}.{ext}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)))
+        .to_string_lossy()
+        .into_owned()
+}
 fn add(s: &mut Session, file: &File, extra: Value) -> Value {
     let mut p = json!({"path": file.0, "family": "end_mill_flat", "label": "10 mm flat", "params": flat_params()});
     if let (Some(map), Some(extra)) = (p.as_object_mut(), extra.as_object()) {
@@ -273,4 +281,58 @@ fn entries_carry_holder_and_stickout() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn import_gtc_adds_tools_and_reports_skips() {
+    let mut s = session();
+    let lib = File::new();
+    create(&mut s, &lib);
+    let src = file_named("gtc");
+    std::fs::write(
+        &src,
+        "UNIT/MM\nTOOL,\nTOOL_TYPE/BALL\nNAME/6 mm ball\nCORNER/3\nSHANK,10,10,60,40\nHOLDER,ER32 BT40\nTOOL,\nTOOL_TYPE/FACE\nNAME/no good\n",
+    )
+    .unwrap();
+    let out = s.execute("tool.library.import", &json!({"path": lib.0, "file": src})).unwrap();
+    assert_eq!(out["imported"], 1, "{out}");
+    assert_eq!(out["skipped"].as_array().unwrap().len(), 1);
+    assert_eq!(out["entries"], 1);
+    let seen = s.execute("tool.library.inspect", &json!({"path": lib.0})).unwrap();
+    let entry = &seen["library"]["entries"][0];
+    assert_eq!(entry["family"], "end_mill_ball");
+    assert_eq!(entry["holder_type"], "er32_bt40");
+    assert_eq!(entry["stickout"], 40.0);
+    // importing the same file again skips everything and leaves the library as it was
+    let out = s.execute("tool.library.import", &json!({"path": lib.0, "file": src})).unwrap();
+    assert_eq!(out["imported"], 0);
+    assert_eq!(out["skipped"].as_array().unwrap().len(), 2);
+    assert_eq!(out["entries"], 1);
+    let _ = std::fs::remove_file(&src);
+}
+
+#[test]
+fn import_json_guesses_the_format_and_tags_the_vendor() {
+    let mut s = session();
+    let lib = File::new();
+    create(&mut s, &lib);
+    let src = file_named("json");
+    std::fs::write(
+        &src,
+        r#"[{"family":"end_mill_flat","label":"10 mm flat","params":{"cutting_diameter":10,"flute_length":20,"overall_length":70,"shank_diameter":10}}]"#,
+    )
+    .unwrap();
+    let out = s.execute("tool.library.import", &json!({"path": lib.0, "file": src, "vendor": "Acme"})).unwrap();
+    assert_eq!(out["imported"], 1, "{out}");
+    let seen = s.execute("tool.library.inspect", &json!({"path": lib.0})).unwrap();
+    assert_eq!(seen["library"]["entries"][0]["vendor"], "Acme");
+    // an extension the guesser does not know needs an explicit format
+    let weird = file_named("xyz");
+    std::fs::write(&weird, "TOOL,\nTOOL_TYPE/END\nCUT_DIAMETER/10\n").unwrap();
+    assert!(s.execute("tool.library.import", &json!({"path": lib.0, "file": weird})).is_err());
+    assert!(s.execute("tool.library.import", &json!({"path": lib.0, "file": weird, "format": "csv"})).is_err());
+    let out = s.execute("tool.library.import", &json!({"path": lib.0, "file": weird, "format": "gtc"})).unwrap();
+    assert_eq!(out["imported"], 1);
+    let _ = std::fs::remove_file(&src);
+    let _ = std::fs::remove_file(&weird);
 }
