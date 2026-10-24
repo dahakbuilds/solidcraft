@@ -1,7 +1,8 @@
 //! The CAM simulation window: pick a tool from the library, describe the stock and the
-//! finished part, run a pocket toolpath through `cam.simulate`, and look at the result —
-//! the machined surface with gouges painted red, and the report beside it. The toolbar's
-//! CAM tab opens it (`ui.start` of `cam.simulate`); every run is the plain engine command.
+//! finished part, run a pocket toolpath or a picked G-code file through `cam.simulate`,
+//! and look at the result — the machined surface with gouges painted red, and the report
+//! beside it. The toolbar's CAM tab opens it (`ui.start` of `cam.simulate`); every run
+//! is the plain engine command.
 
 use std::sync::Arc;
 
@@ -38,6 +39,8 @@ pub struct CamSimPanel {
     pocket_l: String,
     floor_z: String,
     stepover: String,
+    /// A G-code file picked by the user; when set it replaces the pocket preset.
+    gcode_file: Option<String>,
     report: Option<Value>,
     error: Option<String>,
     cam: Camera,
@@ -60,6 +63,7 @@ impl Default for CamSimPanel {
             pocket_l: "20".into(),
             floor_z: "5".into(),
             stepover: "60".into(),
+            gcode_file: None,
             report: None,
             error: None,
             cam: Camera { target: Vec3::new(30.0, 30.0, 0.0), distance: 130.0, ..Camera::default() },
@@ -165,17 +169,22 @@ impl CamSimPanel {
             self.error = Some(tr_label("Stock sizes must be positive").to_string());
             return;
         }
-        let Some(path) = self.pocket_path(sx, sy, sz, Self::tool_diameter(&entry)) else {
-            self.error = Some(tr_label("Check the pocket sizes and stepover").to_string());
-            return;
-        };
-        let request = json!({
+        let mut request = json!({
             "family": entry["family"],
             "params": entry["params"],
-            "path": path,
             "stock": {"min": [0.0, 0.0, 0.0], "max": [sx, sy, sz]},
             "part_top": part_top,
         });
+        match &self.gcode_file {
+            Some(file) => request["file"] = json!(file),
+            None => {
+                let Some(path) = self.pocket_path(sx, sy, sz, Self::tool_diameter(&entry)) else {
+                    self.error = Some(tr_label("Check the pocket sizes and stepover").to_string());
+                    return;
+                };
+                request["path"] = json!(path);
+            }
+        }
         match app.session.execute("cam.simulate", &request) {
             Ok(v) => {
                 self.scene_radius = sx.max(sy).max(sz) * 0.8;
@@ -290,6 +299,32 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                         num_field(ui, &mut d.stepover);
                     });
                     ui.separator();
+                    ui.label(RichText::new(tr_label("Path")).color(t.text_dim).small());
+                    ui.horizontal(|ui| {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        if ui_kit::button(ui, tr_label("G-code…"), ui_kit::Button::Normal).clicked() {
+                            app.pick_open_for(&["nc", "ngc", "gcode", "g", "tap", "cnc"], |app, picked| {
+                                if let Some(picked) = picked
+                                    && let Some(mut d) = app.camsim.take()
+                                {
+                                    d.gcode_file = Some(picked);
+                                    d.error = None;
+                                    app.camsim = Some(d);
+                                }
+                            });
+                        }
+                        match &d.gcode_file {
+                            Some(file) => {
+                                let name = file.rsplit(['/', '\\']).next().unwrap_or(file);
+                                ui.label(RichText::new(name).color(t.text_dim).small());
+                                if ui_kit::button(ui, tr_label("Pocket"), ui_kit::Button::Small).clicked() {
+                                    d.gcode_file = None;
+                                }
+                            }
+                            None => ui.label(RichText::new(tr_label("pocket preset")).color(t.text_dim).small()),
+                        }
+                    });
+                    ui.separator();
                     if ui_kit::button(ui, tr_label("Simulate"), ui_kit::Button::Primary).clicked() {
                         d.run(app);
                     }
@@ -318,6 +353,11 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                                 ))
                                 .color(t.text_dim),
                             );
+                        }
+                        for w in r["warnings"].as_array().into_iter().flatten().take(3) {
+                            if let Some(w) = w.as_str() {
+                                ui.label(RichText::new(w).color(t.text_dim).small());
+                            }
                         }
                     }
                 });
