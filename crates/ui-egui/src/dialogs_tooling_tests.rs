@@ -91,6 +91,36 @@ fn hostile_parameters_are_refused_in_the_form() {
 }
 
 #[test]
+fn the_form_composes_a_holder_assembly() {
+    let mut h = Harness::new();
+    let path = temp_library("holder");
+    open_on(&mut h, &path);
+    let holders = super::holders(&mut h.app);
+    {
+        let d = h.app.tooling.as_mut().unwrap();
+        d.holders = holders;
+        assert!(!d.holders.is_empty(), "the holder catalogue loads");
+        d.start_add();
+        d.form.label = "10 mm flat in ER32".into();
+        d.form.holder = d.holders.iter().position(|x| x.id == "er32_bt40").unwrap() + 1;
+        d.form.stickout = "60".into();
+    }
+    h.frames(2);
+    h.step(&json!({"widget": "Add tool"})).unwrap();
+    h.frames(2);
+    {
+        let d = h.app.tooling.as_ref().unwrap();
+        assert!(d.error.is_none(), "the assembly entry is accepted: {:?}", d.error);
+        let entries = d.entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["holder_type"], "er32_bt40");
+        assert_eq!(entries[0]["stickout"], 60.0);
+        assert!(d.preview.is_some(), "the assembly preview was drawn");
+    }
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
 fn the_search_box_filters_the_list() {
     let mut h = Harness::new();
     let path = temp_library("search");
