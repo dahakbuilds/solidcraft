@@ -321,7 +321,9 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                                     d.gcode_file = None;
                                 }
                             }
-                            None => ui.label(RichText::new(tr_label("pocket preset")).color(t.text_dim).small()),
+                            None => {
+                                ui.label(RichText::new(tr_label("pocket preset")).color(t.text_dim).small());
+                            }
                         }
                     });
                     ui.separator();
