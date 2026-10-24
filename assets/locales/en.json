@@ -640,6 +640,7 @@
   "cmd.browser_rename_group": "Rename Group",
   "cmd.browser_ungroup": "Ungroup",
   "cmd.browser_visibility": "Show/Hide",
+  "cmd.cam_simulate": "Simulate Toolpath",
   "cmd.canvas_calibrate": "Calibrate Canvas",
   "cmd.canvas_decal": "Decal",
   "cmd.canvas_delete": "Delete Canvas",

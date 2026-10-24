@@ -17,6 +17,7 @@ pub mod import;
 pub mod mesh;
 pub mod model;
 pub mod profile;
+pub mod sim;
 pub mod starter;
 
 pub use assembly::Assembly;
@@ -26,6 +27,7 @@ pub use import::{ImportReport, ImportedTool, Skipped};
 pub use mesh::{Revolved, Role};
 pub use model::{Connection, ItemKind, Provenance, ToolEntry, ToolLibrary};
 pub use profile::{CutterProfile, Segment};
+pub use sim::{ClPoint, SimOptions, SimReport, ZMap, simulate};
 pub use starter::starter_pack;
 
 #[derive(Debug, thiserror::Error)]

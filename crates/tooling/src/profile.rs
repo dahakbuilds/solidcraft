@@ -114,6 +114,66 @@ impl CutterProfile {
         }
         best
     }
+
+    /// The lowest cutting-surface height at radial distance `r` from the axis — the inverse of
+    /// [`radius_at`](Self::radius_at) restricted to cutting segments. With the tool tip at
+    /// height `z`, material at that radius is cut down to `z + height`; `None` when no cutting
+    /// segment reaches the radius.
+    pub fn cut_height_at(&self, r: f64) -> Option<f64> {
+        self.lowest_at(r, true)
+    }
+
+    /// The lowest point of the whole envelope (cutting or not) at radius `r`; rapid-move
+    /// shank-collision tests use this.
+    pub fn envelope_height_at(&self, r: f64) -> Option<f64> {
+        self.lowest_at(r, false)
+    }
+
+    fn lowest_at(&self, r: f64, cutting_only: bool) -> Option<f64> {
+        if !r.is_finite() || r < 0.0 {
+            return None;
+        }
+        let mut best: Option<f64> = None;
+        let mut consider = |z: f64| {
+            if best.is_none_or(|b| z < b) {
+                best = Some(z);
+            }
+        };
+        for seg in &self.segments {
+            if cutting_only && !seg.cutting() {
+                continue;
+            }
+            match *seg {
+                Segment::Line { r0, z0, r1, z1, .. } => {
+                    let (rmin, rmax) = (r0.min(r1), r0.max(r1));
+                    if r < rmin - 1e-9 || r > rmax + 1e-9 {
+                        continue;
+                    }
+                    let z = if (r1 - r0).abs() < 1e-12 {
+                        z0.min(z1)
+                    } else {
+                        let t = ((r - r0) / (r1 - r0)).clamp(0.0, 1.0);
+                        z0 + t * (z1 - z0)
+                    };
+                    consider(z);
+                }
+                Segment::Arc { cr, cz, radius, .. } => {
+                    let dr = r - cr;
+                    if dr.abs() > radius * (1.0 + 1e-9) {
+                        continue;
+                    }
+                    let dz = (radius * radius - dr * dr).max(0.0).sqrt();
+                    let (zmin, zmax) = seg.z_range();
+                    for z in [cz - dz, cz + dz] {
+                        if z >= zmin - 1e-9 && z <= zmax + 1e-9 {
+                            consider(z);
+                        }
+                    }
+                }
+            }
+        }
+        best
+    }
 }
 
 /// Builds the revolved profile of `family` from its (validated) parameters.

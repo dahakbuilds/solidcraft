@@ -242,11 +242,11 @@ fn write_library(cmd: &str, path: &str, library: &ToolLibrary, replace: bool) ->
 }
 
 /// The unit lengths arrive in; stored parameters are always millimetres.
-enum Unit {
+pub(crate) enum Unit {
     Mm,
     Inch,
 }
-fn unit(cmd: &str, value: Option<&str>) -> Result<Unit> {
+pub(crate) fn unit(cmd: &str, value: Option<&str>) -> Result<Unit> {
     match value.unwrap_or("mm") {
         "mm" => Ok(Unit::Mm),
         "inch" => Ok(Unit::Inch),
@@ -256,7 +256,7 @@ fn unit(cmd: &str, value: Option<&str>) -> Result<Unit> {
 
 /// Parses a hostile parameter object, converts lengths from the request unit, and validates
 /// against the family schema.
-fn parse_params(cmd: &str, value: &Value, family: Family, unit: &Unit) -> Result<BTreeMap<String, f64>> {
+pub(crate) fn parse_params(cmd: &str, value: &Value, family: Family, unit: &Unit) -> Result<BTreeMap<String, f64>> {
     let object = value.as_object().ok_or_else(|| bad(cmd, "params must be an object of numbers"))?;
     if object.len() > tooling::model::MAX_PARAMS {
         return Err(bad(cmd, "params has too many entries"));
@@ -278,7 +278,7 @@ fn parse_params(cmd: &str, value: &Value, family: Family, unit: &Unit) -> Result
     Ok(out)
 }
 
-fn parse_family(cmd: &str, value: &str) -> Result<Family> {
+pub(crate) fn parse_family(cmd: &str, value: &str) -> Result<Family> {
     Family::parse(value).ok_or_else(|| bad(cmd, format!("unknown tool family `{value}` (see tool.families)")))
 }
 
