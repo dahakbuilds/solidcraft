@@ -81,6 +81,14 @@ fn number(text: &str) -> Option<f64> {
     text.trim().parse::<f64>().ok().filter(|v| v.is_finite() && v.abs() < 1e6)
 }
 
+/// A numeric field with room for its value: the kit field fills the width it is given,
+/// so a row of several fields must hand each one a fixed-width child.
+fn num_field(ui: &mut egui::Ui, value: &mut String) {
+    ui.allocate_ui_with_layout(egui::vec2(56.0, 28.0), egui::Layout::left_to_right(egui::Align::Min), |ui| {
+        ui_kit::text_field(ui, value, "");
+    });
+}
+
 impl CamSimPanel {
     /// Read the default library again so freshly added or imported tools show up.
     fn load_tools(&mut self, app: &mut SolveApp) {
@@ -257,11 +265,11 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                     ui.label(RichText::new(tr_label("Stock")).color(t.text_dim).small());
                     ui.horizontal(|ui| {
                         ui.label(tr_label("X"));
-                        ui_kit::text_field(ui, &mut d.stock_x, "");
+                        num_field(ui, &mut d.stock_x);
                         ui.label(tr_label("Y"));
-                        ui_kit::text_field(ui, &mut d.stock_y, "");
+                        num_field(ui, &mut d.stock_y);
                         ui.label(tr_label("Z"));
-                        ui_kit::text_field(ui, &mut d.stock_z, "");
+                        num_field(ui, &mut d.stock_z);
                     });
                     ui.horizontal(|ui| {
                         ui.label(tr_label("Part top"));
@@ -271,15 +279,15 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                     ui.label(RichText::new(tr_label("Pocket")).color(t.text_dim).small());
                     ui.horizontal(|ui| {
                         ui.label(tr_label("Width"));
-                        ui_kit::text_field(ui, &mut d.pocket_w, "");
+                        num_field(ui, &mut d.pocket_w);
                         ui.label(tr_label("Length"));
-                        ui_kit::text_field(ui, &mut d.pocket_l, "");
+                        num_field(ui, &mut d.pocket_l);
                     });
                     ui.horizontal(|ui| {
                         ui.label(tr_label("Floor Z"));
-                        ui_kit::text_field(ui, &mut d.floor_z, "");
+                        num_field(ui, &mut d.floor_z);
                         ui.label(tr_label("Stepover %"));
-                        ui_kit::text_field(ui, &mut d.stepover, "");
+                        num_field(ui, &mut d.stepover);
                     });
                     ui.separator();
                     if ui_kit::button(ui, tr_label("Simulate"), ui_kit::Button::Primary).clicked() {
