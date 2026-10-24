@@ -102,8 +102,11 @@ fn add_refuses_unknown_families_hostile_params_and_unbuilt_kinds() {
         );
     }
     // omitted parameters take their schema defaults, so a partial set is accepted
-    s.execute("tool.library.add", &json!({"path": file.0, "family": "end_mill_flat", "label": "partial", "params": {"cutting_diameter": 10.0, "flute_length": 20.0}}))
-        .unwrap();
+    s.execute(
+        "tool.library.add",
+        &json!({"path": file.0, "family": "end_mill_flat", "label": "partial", "params": {"cutting_diameter": 10.0, "flute_length": 20.0}}),
+    )
+    .unwrap();
     assert!(
         s.execute("tool.library.add", &json!({"path": file.0, "family": "turn_groover", "label": "x", "params": {}}))
             .unwrap_err()

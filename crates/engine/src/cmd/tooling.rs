@@ -360,7 +360,8 @@ fn assembly(_s: &mut Session, p: &Value) -> Result<Value> {
     if !stickout.is_finite() || stickout <= 0.0 || stickout > 1000.0 {
         return Err(bad(CMD, "stickout must be a finite length up to 1000 mm"));
     }
-    let built = tooling::assembly::compose(&cutter, &request.holder_type, bore, stickout, request.steps.unwrap_or(48)).map_err(|e| bad(CMD, e.to_string()))?;
+    let built = tooling::assembly::compose(&cutter, &request.holder_type, bore, stickout, request.steps.unwrap_or(48))
+        .map_err(|e| bad(CMD, e.to_string()))?;
     let mesh = &built.mesh;
     let roles: Vec<&str> = mesh
         .mesh
