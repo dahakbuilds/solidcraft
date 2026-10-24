@@ -8,10 +8,8 @@ fn temp_library(name: &str) -> String {
 
 /// Open the window on a fresh library file (the default path would write to the user folder).
 fn open_on(h: &mut Harness, path: &str) {
-    let mut d = super::ToolingPanel::default();
-    d.families = super::families(&mut h.app);
+    let mut d = super::ToolingPanel { families: super::families(&mut h.app), path: path.to_string(), ..Default::default() };
     assert!(!d.families.is_empty(), "the family schema loads");
-    d.path = path.to_string();
     d.reload(&mut h.app);
     assert!(d.error.is_none(), "the library opens: {:?}", d.error);
     h.app.tooling = Some(d);
