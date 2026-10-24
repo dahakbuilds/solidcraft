@@ -37,6 +37,9 @@ pub mod colors {
     pub const BG_BOTTOM: Rgb = Rgb(203, 210, 221);
     /// What the section cap is tinted toward.
     pub const SECTION_CAP: Rgb = solidcraft_render::SECTION_CAP;
+    /// CAM toolpaths: a rapid move (amber) and a feed move (green).
+    pub const CAM_RAPID: Rgb = Rgb(232, 168, 32);
+    pub const CAM_FEED: Rgb = Rgb(46, 174, 96);
 }
 
 /// The colours a headless scene is drawn in. [`Palette::DEFAULT`] is [`colors`], the light
@@ -70,6 +73,9 @@ pub struct Palette {
     pub cap: Rgb,
     /// The surface analysis colours.
     pub analysis: AnalysisColors,
+    /// CAM toolpaths: a rapid move and a feed (cutting) move.
+    pub cam_rapid: Rgb,
+    pub cam_feed: Rgb,
 }
 
 impl Palette {
@@ -92,6 +98,8 @@ impl Palette {
         axes: [colors::AXIS_X, colors::AXIS_Y, colors::AXIS_Z],
         cap: colors::SECTION_CAP,
         analysis: AnalysisColors::DEFAULT,
+        cam_rapid: colors::CAM_RAPID,
+        cam_feed: colors::CAM_FEED,
     };
 }
 
@@ -137,6 +145,14 @@ fn bounds_by(s: &Session, sketches: bool, of: impl Fn(&solidcraft_doc::ModelBody
             for p in &w.pts {
                 b.add(*p);
             }
+        }
+    }
+    // CAM toolpaths frame with the design (cheap endpoints; a bulging arc may sit a
+    // hair outside). Adding the two corners of each axis-aligned box spans it.
+    for op in s.doc.cam.operations.iter() {
+        if let Some((lo, hi)) = op.toolpath.as_ref().and_then(|t| t.loose_bounds()) {
+            b.add(Vec3::new(lo[0], lo[1], lo[2]));
+            b.add(Vec3::new(hi[0], hi[1], hi[2]));
         }
     }
     b
@@ -537,6 +553,17 @@ fn build_scene(
         }
         for (pts, col, cons) in sketch_lines_in(&ss.sketch, &ss.plane, active, &ss.report.curve_determined, &mut sampler, p) {
             sc.lines.push(SceneLine { points: pts, color: col, width: if cons { 1.0 } else { 1.6 }, on_top: active });
+        }
+    }
+    // CAM toolpaths: each operation's path, rapids amber and feeds green, drawn over
+    // the model so the path reads against the solid.
+    for op in &s.doc.cam.operations {
+        let Some(path) = &op.toolpath else { continue };
+        let tol = (cam.half_height() / 500.0).max(0.01);
+        let Ok(polylines) = path.tessellate(tol) else { continue };
+        for line in polylines {
+            let color = if line.cut { p.cam_feed } else { p.cam_rapid };
+            sc.lines.push(SceneLine { points: line.points, color, width: 2.2, on_top: true });
         }
     }
     sc

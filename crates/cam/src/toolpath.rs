@@ -246,6 +246,26 @@ impl Toolpath {
         }
         any.then(|| (a(min), a(max)))
     }
+
+    /// A cheap box over the segment endpoints and arc centres — no tessellation. It
+    /// can understate a bulging arc a little; that is enough to frame a view.
+    pub fn loose_bounds(&self) -> Option<([f64; 3], [f64; 3])> {
+        let mut min = Vec3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
+        let mut max = Vec3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+        let mut any = false;
+        for segment in &self.segments {
+            for p in [segment.from(), segment.to()] {
+                min = min.min(v(&p));
+                max = max.max(v(&p));
+                any = true;
+            }
+            if let Segment::Arc { center, .. } = segment {
+                min = min.min(v(center));
+                max = max.max(v(center));
+            }
+        }
+        any.then(|| (a(min), a(max)))
+    }
 }
 
 #[cfg(test)]

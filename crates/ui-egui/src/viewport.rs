@@ -960,6 +960,23 @@ pub(crate) fn build_scene(app: &SolveApp) -> GpuScene {
             }
         }
     }
+    // CAM toolpaths: each operation's path over the model, rapids amber and feeds green.
+    if !s.doc.cam.operations.is_empty() {
+        let pal = scene_palette(app.ui.dark, app.preferences.color_vision);
+        let rapid = c4(Color32::from_rgb(pal.cam_rapid.0, pal.cam_rapid.1, pal.cam_rapid.2));
+        let feed = c4(Color32::from_rgb(pal.cam_feed.0, pal.cam_feed.1, pal.cam_feed.2));
+        for op in &s.doc.cam.operations {
+            let Some(path) = &op.toolpath else { continue };
+            let tol = (app.cam.half_height() / 500.0).max(0.01);
+            let Ok(polylines) = path.tessellate(tol) else { continue };
+            for line in polylines {
+                let col = if line.cut { feed } else { rapid };
+                for w in line.points.windows(2) {
+                    sc.line(w[0].to_f32(), w[1].to_f32(), col, 2.2, true);
+                }
+            }
+        }
+    }
 
     sc
 }
@@ -4280,6 +4297,8 @@ pub(crate) fn scene_palette(dark: bool, mode: crate::theme::ColorVision) -> soli
         axes: t.triad.map(rgb),
         cap: rgb(t.section_cap),
         analysis: t.analysis,
+        cam_rapid: solidcraft_engine::view::colors::CAM_RAPID,
+        cam_feed: solidcraft_engine::view::colors::CAM_FEED,
     }
 }
 
