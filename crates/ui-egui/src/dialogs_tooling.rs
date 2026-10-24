@@ -278,7 +278,7 @@ impl ToolingPanel {
         if self.preview.as_ref().is_some_and(|(_, k)| *k == key) {
             return;
         }
-        let image = self.render_preview(ctx).unwrap_or_else(|| ColorImage::from_rgb([1, 1], &[Color32::TRANSPARENT]));
+        let image = self.render_preview(ctx).unwrap_or_else(|| ColorImage::new([1, 1], Color32::TRANSPARENT));
         match &mut self.preview {
             Some((tex, k)) => {
                 tex.set(image, egui::TextureOptions::LINEAR);
@@ -408,14 +408,14 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                     let names: Vec<&str> = names.iter().map(String::as_str).collect();
                     let before = d.form.family;
                     ui.label("Family");
-                    ui.add(egui::ComboBox::from_id_salt("sc_tool_family").selected_text(names.get(d.form.family).copied().unwrap_or("?")).show_ui(
+                    egui::ComboBox::from_id_salt("sc_tool_family").selected_text(names.get(d.form.family).copied().unwrap_or("?")).show_ui(
                         ui,
                         |ui| {
                             for (i, name) in names.iter().enumerate() {
                                 ui.selectable_value(&mut d.form.family, i, *name);
                             }
                         },
-                    ));
+                    );
                     ui.end_row();
                     if d.form.family != before {
                         d.reset_params();
