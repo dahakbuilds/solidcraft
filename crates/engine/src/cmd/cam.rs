@@ -355,7 +355,7 @@ fn set_origin(s: &mut Session, p: &Value) -> Result<Value> {
     };
     next.check().map_err(|e| cam_err(CMD, e))?;
     *origin = next;
-    Ok(json!({"origin": serde_json::to_value(&*origin).map_err(|e| bad(CMD, e.to_string()))?}))
+    Ok(json!({"origin": serde_json::to_value(*origin).map_err(|e| bad(CMD, e.to_string()))?}))
 }
 
 #[derive(Deserialize)]

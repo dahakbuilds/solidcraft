@@ -148,8 +148,8 @@ pub const SECTIONS: &[Section] = &[
     Section { tab: "INSERT", panel: "LIBRARY", promoted: 3, ids: &["parts.fastener", "parts.library", "parts.resize", "parts.insert"] },
     Section { tab: "INSERT", panel: "LINKS", promoted: 2, ids: &["component.update_links", "component.break_link"] },
     Section { tab: "MANUFACTURE", panel: "SETUP", promoted: 3, ids: &["cam.operation.add", "cam.stock.set", "cam.toolpath.load"] },
-    Section { tab: "MANUFACTURE", panel: "TOOLING", promoted: 1, ids: &["tool.library.open"] },
-    Section { tab: "MANUFACTURE", panel: "SIMULATE", promoted: 2, ids: &["cam.simulate", "cam.machine"] },
+    Section { tab: "MANUFACTURE", panel: "TOOLING", promoted: 1, ids: &["tool.library.open", "tool.library.scan"] },
+    Section { tab: "MANUFACTURE", panel: "SIMULATE", promoted: 2, ids: &["cam.simulate", "cam.machine", "cam.post.run"] },
     Section { tab: "INSPECT", panel: "MEASURE", promoted: 3, ids: &["inspect.measure", "inspect.center_of_mass", "component.properties"] },
     Section { tab: "INSPECT", panel: "SECTION", promoted: 1, ids: &["inspect.section"] },
     Section {
@@ -272,6 +272,7 @@ pub const RIBBON_LABELS: &[(&str, &str)] = &[
     ("appearance.assign", "Appearance"),
     ("cam.machine", "Machine"),
     ("cam.operation.add", "Operation"),
+    ("cam.post.run", "Post"),
     ("cam.simulate", "Simulate"),
     ("cam.stock.set", "Stock"),
     ("cam.toolpath.load", "Load Path"),

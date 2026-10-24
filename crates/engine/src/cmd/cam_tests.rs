@@ -352,6 +352,54 @@ fn cam_machine_refuses_bad_requests() {
 }
 
 #[test]
+fn cam_post_save_list_and_run() {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let dir = solidcraft_io::vfs::temp_dir()
+        .join(format!("solidcraft-post-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+    std::fs::create_dir_all(&dir).unwrap();
+    let folder = dir.to_string_lossy().into_owned();
+    let mut s = Session::default();
+    let out = s
+        .execute("cam.post.save", &json!({"folder": folder, "post": {"id": "my_mill", "name": "My Mill", "header": ["(mine)"], "footer": ["M30"]}}))
+        .unwrap();
+    assert_eq!(out["id"], "my_mill");
+    let list = s.execute("cam.post.list", &json!({"folder": folder})).unwrap();
+    let posts = list["posts"].as_array().unwrap();
+    assert!(posts.iter().any(|p| p["id"] == "my_mill" && p["builtin"] == false), "{list}");
+    assert!(posts.iter().any(|p| p["id"] == "iso_mill" && p["builtin"] == true), "{list}");
+    let run = s
+        .execute(
+            "cam.post.run",
+            &json!({
+                "id": "my_mill", "folder": folder, "feed": 300,
+                "segments": [
+                    {"type": "line", "from": [0.0, 0.0, 5.0], "to": [0.0, 0.0, 0.0], "cut": false},
+                    {"type": "line", "from": [0.0, 0.0, 0.0], "to": [10.0, 0.0, 0.0], "cut": true},
+                ],
+            }),
+        )
+        .unwrap();
+    let gcode = run["gcode"].as_str().unwrap();
+    assert!(gcode.starts_with("(mine)\nG21\nG90\nM3 S8000\n"), "{gcode}");
+    assert!(gcode.contains("G1 X10 Y0 Z0 F300"), "{gcode}");
+    assert!(gcode.ends_with("M30\n"), "{gcode}");
+    // A program can also be written to a file, and run from an operation's toolpath.
+    let program = dir.join("program.nc");
+    let run = s
+        .execute("cam.post.run", &json!({"segments": [{"type": "line", "from": [0.0, 0.0, 0.0], "to": [1.0, 0.0, 0.0]}], "out": program.to_string_lossy()}))
+        .unwrap();
+    assert_eq!(run["out"].as_str().unwrap(), program.to_string_lossy());
+    assert!(std::fs::read_to_string(&program).unwrap().contains("G1 X1"));
+    // Hostile requests: unknown post, both sources, neither, a bad id, extra keys.
+    assert!(s.execute("cam.post.run", &json!({"id": "nope", "segments": []})).is_err());
+    assert!(s.execute("cam.post.run", &json!({"operation": 1, "segments": []})).is_err());
+    assert!(s.execute("cam.post.run", &json!({})).is_err());
+    assert!(s.execute("cam.post.save", &json!({"folder": folder, "post": {"id": "bad id!", "name": "x"}})).is_err());
+    assert!(s.execute("cam.post.save", &json!({"folder": folder, "post": {"id": "ok", "name": "x", "smuggled": 1}})).is_err());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn fixtures_and_origin() {
     let mut s = Session::default();
     let file = gcode_file("G1 X1 Y1\n");

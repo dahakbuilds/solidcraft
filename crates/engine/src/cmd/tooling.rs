@@ -29,6 +29,8 @@ pub static COMMANDS: &[CommandSpec] = &[
         .params("path, family, label, params {…}, unit? mm|inch, kind? cutting, vendor?, product_id?, product_url?, machine_connection? {standard,size}, work_connection?, notes?, provenance?; all lengths stored in mm"),
     CommandSpec::new("tool.library.import", "Import Tools", import_tools).icon("import").noundo().doc_only()
         .params("path (library), file, format? gtc|json (guessed from the extension), unit? mm|inch (for GTC files without a UNIT record), vendor?; adds every tool the file describes and reports each skip; GTC covers .gtc/.p21/.tl/.tpt"),
+    CommandSpec::new("tool.library.scan", "Scan Tool Folders", scan).icon("inspect").noundo().doc_only()
+        .params("folder? (default: SolidCraft's tools folder plus SOLIDCRAFT_TOOL_FOLDERS), recursive? (default false); lists vendor tool files (GTC/p21, tool JSON, library JSON) with their tool counts; imports nothing"),
     CommandSpec::new("tool.library.seed", "Seed Starter Tools", seed).icon("import").noundo().doc_only()
         .params("path (library); adds the built-in starter pack of common milling cutters, skipping any already present"),
     CommandSpec::new("tool.library.edit", "Edit Tool Library Entry", edit).icon("import").noundo().doc_only()
@@ -576,6 +578,101 @@ struct Import {
 /// Read a vendor file (GTC/p21 or tool JSON) and add every tool it describes. A tool that
 /// is already in the library, or that fails validation, is reported as a skip; the file
 /// stays untouched and the library is written only when something was imported.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Scan {
+    #[serde(default)]
+    folder: Option<String>,
+    #[serde(default)]
+    recursive: bool,
+}
+
+/// Scan vendor tool folders: the given one, or SolidCraft's own tools folder plus
+/// every folder named in `SOLIDCRAFT_TOOL_FOLDERS`. Reports each tool file it can
+/// read and how many tools it holds; nothing is imported until `tool.library.import`
+/// runs on the chosen file.
+fn scan(_s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "tool.library.scan";
+    let r: Scan = serde_json::from_value(p.clone()).map_err(|e| bad(CMD, e.to_string()))?;
+    if cfg!(target_arch = "wasm32") {
+        let _ = &r;
+        return Err(bad(CMD, "not supported yet: scanning folders in the browser"));
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let mut folders: Vec<std::path::PathBuf> = Vec::new();
+        match &r.folder {
+            Some(f) => {
+                path(CMD, f)?;
+                folders.push(std::path::PathBuf::from(f));
+            }
+            None => {
+                if let Some(d) = crate::recovery::data_dir() {
+                    folders.push(d.join("tools"));
+                }
+                if let Ok(list) = std::env::var("SOLIDCRAFT_TOOL_FOLDERS") {
+                    folders.extend(std::env::split_paths(&list).filter(|p| !p.as_os_str().is_empty()));
+                }
+            }
+        }
+        let mut found: Vec<Value> = Vec::new();
+        let mut seen: Vec<String> = Vec::new();
+        for dir in folders {
+            if !dir.is_dir() {
+                continue;
+            }
+            seen.push(dir.display().to_string());
+            let mut stack = vec![dir];
+            while let Some(d) = stack.pop() {
+                let Ok(entries) = std::fs::read_dir(&d) else { continue };
+                for e in entries.flatten().take(4096) {
+                    let fp = e.path();
+                    if fp.is_dir() {
+                        if r.recursive && stack.len() < 64 {
+                            stack.push(fp);
+                        }
+                        continue;
+                    }
+                    if found.len() >= 512 {
+                        break;
+                    }
+                    let lower = fp.to_string_lossy().to_ascii_lowercase();
+                    let gtc = [".gtc", ".p21", ".tl", ".tpt"].iter().any(|x| lower.ends_with(x));
+                    if !(gtc || lower.ends_with(".json")) {
+                        continue;
+                    }
+                    if fp.metadata().ok().filter(|m| m.is_file() && m.len() <= tooling::model::MAX_BYTES as u64).is_none() {
+                        continue;
+                    }
+                    let Ok(bytes) = std::fs::read(&fp) else { continue };
+                    let text = String::from_utf8_lossy(&bytes);
+                    let (format, count) = if gtc {
+                        ("gtc", tooling::import::parse_gtc(&text, false).tools.len())
+                    } else {
+                        match tooling::import::parse_json(&text) {
+                            Ok(report) => ("json", report.tools.len()),
+                            Err(_) => match ToolLibrary::decode(&bytes) {
+                                Ok(library) => ("library", library.entries.len()),
+                                Err(_) => continue,
+                            },
+                        }
+                    };
+                    if count == 0 {
+                        continue;
+                    }
+                    found.push(json!({"path": fp.to_string_lossy(), "format": format, "tools": count}));
+                }
+            }
+        }
+        found.sort_by(|a, b| a["path"].as_str().unwrap_or("").cmp(b["path"].as_str().unwrap_or("")));
+        Ok(json!({"folders": seen, "libraries": found}))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        Err(bad(CMD, "not supported yet: scanning folders in the browser"))
+    }
+}
+
 fn import_tools(_s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "tool.library.import";
     let request: Import = serde_json::from_value(p.clone()).map_err(|e| bad(CMD, e.to_string()))?;

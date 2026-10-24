@@ -350,3 +350,29 @@ fn import_json_guesses_the_format_and_tags_the_vendor() {
     let _ = std::fs::remove_file(&src);
     let _ = std::fs::remove_file(&weird);
 }
+
+#[test]
+fn tool_library_scan_lists_vendor_files() {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let dir = solidcraft_io::vfs::temp_dir()
+        .join(format!("solidcraft-scan-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("vendor.gtc"), "TOOL,\nTOOL_TYPE/END\nCUT_DIAMETER/6.0\nLENGTH/20\n").unwrap();
+    std::fs::write(
+        dir.join("kit.json"),
+        r#"[{"family":"end_mill_flat","label":"6mm flat","params":{"cutting_diameter":6,"flute_length":20,"overall_length":60,"shank_diameter":10}}]"#,
+    )
+    .unwrap();
+    std::fs::write(dir.join("notes.txt"), "ignore me").unwrap();
+    let mut s = session();
+    let out = s.execute("tool.library.scan", &json!({"folder": dir.to_string_lossy()})).unwrap();
+    assert_eq!(out["folders"].as_array().unwrap().len(), 1, "{out}");
+    let libs = out["libraries"].as_array().unwrap();
+    assert_eq!(libs.len(), 2, "{out}");
+    assert!(libs.iter().any(|l| l["format"] == "gtc" && l["tools"].as_u64().unwrap_or(0) >= 1), "{out}");
+    assert!(libs.iter().any(|l| l["format"] == "json" && l["tools"].as_u64().unwrap_or(0) == 1), "{out}");
+    // A folder that does not exist simply finds nothing.
+    let out = s.execute("tool.library.scan", &json!({"folder": dir.join("nope").to_string_lossy()})).unwrap();
+    assert!(out["libraries"].as_array().unwrap().is_empty(), "{out}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

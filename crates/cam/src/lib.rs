@@ -11,10 +11,12 @@
 
 mod mesh;
 mod model;
+mod post;
 mod toolpath;
 
 pub use mesh::{DEFAULT_STOCK_SEGMENTS, MAX_STOCK_SEGMENTS, box_mesh, cylinder_mesh, stock_mesh};
 pub use model::{Allowance, CamSetup, Fixture, Operation, Stock, StockKind, ToolRef, WorkOrigin};
+pub use post::{EmitOptions, Post, builtin_posts, emit};
 pub use toolpath::{DEFAULT_TOLERANCE, MAX_SEGMENTS, Polyline, Segment, Toolpath};
 
 #[derive(Debug, thiserror::Error)]

@@ -23,6 +23,7 @@ macro_rules! planned {
 mod bom;
 mod browser;
 mod cam;
+mod cam_post;
 pub(crate) mod clearance;
 mod clipboard;
 mod compare;
@@ -306,6 +307,7 @@ pub fn command_specs() -> Vec<&'static CommandSpec> {
     v.extend(libraries::COMMANDS.iter());
     v.extend(tooling::COMMANDS.iter());
     v.extend(cam::COMMANDS.iter());
+    v.extend(cam_post::COMMANDS.iter());
     v.extend(section::COMMANDS.iter());
     v.extend(view_navigation::COMMANDS.iter());
     v.extend(view_dxf::COMMANDS.iter());
