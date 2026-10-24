@@ -122,26 +122,6 @@ fn the_form_composes_a_holder_assembly() {
 }
 
 #[test]
-fn debug_add_tool_rect() {
-    let mut h = Harness::new();
-    let path = temp_library("dbg");
-    open_on(&mut h, &path);
-    {
-        let d = h.app.tooling.as_mut().unwrap();
-        d.start_add();
-        d.form.label = "x".into();
-    }
-    h.frames(2);
-    eprintln!("DBG add-tool center: {:?}", h.widget("Add tool"));
-    eprintln!("DBG window rect: {:?}", crate::scenario::rect_of("dialog:window"));
-    h.step(&json!({"widget": "Add tool"})).unwrap();
-    h.frames(2);
-    let d = h.app.tooling.as_ref().unwrap();
-    eprintln!("DBG after click: error={:?} entries={} selected={:?}", d.error, d.entries().len(), d.selected);
-    let _ = std::fs::remove_file(&path);
-}
-
-#[test]
 fn the_search_box_filters_the_list() {
     let mut h = Harness::new();
     let path = temp_library("search");
