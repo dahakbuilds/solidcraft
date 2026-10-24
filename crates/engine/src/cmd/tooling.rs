@@ -596,7 +596,8 @@ fn import_tools(_s: &mut Session, p: &Value) -> Result<Value> {
     if len > tooling::model::MAX_BYTES as u64 {
         return Err(bad(CMD, "the import file exceeds 8 MiB"));
     }
-    let bytes = solidcraft_io::vfs::read(&request.file, tooling::model::MAX_BYTES).map_err(|e| bad(CMD, format!("could not read the import file: {e}")))?;
+    let bytes =
+        solidcraft_io::vfs::read(&request.file, tooling::model::MAX_BYTES).map_err(|e| bad(CMD, format!("could not read the import file: {e}")))?;
     let text = String::from_utf8_lossy(&bytes);
     let report = match format.as_str() {
         "gtc" => tooling::import::parse_gtc(&text, unit_inch),
