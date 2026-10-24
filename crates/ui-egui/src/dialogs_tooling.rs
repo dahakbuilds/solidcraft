@@ -81,8 +81,7 @@ impl Default for ToolingPanel {
 
 /// Open the window on the default user library.
 pub fn open(app: &mut SolveApp) {
-    let mut d = ToolingPanel::default();
-    d.families = families(app);
+    let mut d = ToolingPanel { families: families(app), ..Default::default() };
     d.reload(app);
     app.tooling = Some(d);
 }
@@ -296,8 +295,7 @@ impl ToolingPanel {
         let profile = profile::of(family, &params).ok()?;
         let revolved = mesh::revolve(&profile, REVOLVE_STEPS).ok()?;
         let t = Tokens::get();
-        let mut scene = Scene::default();
-        scene.background = Some((rgb(t.viewport_top), rgb(t.viewport_bottom)));
+        let mut scene = Scene { background: Some((rgb(t.viewport_top), rgb(t.viewport_bottom))), ..Default::default() };
         let face_colors: Vec<(u32, Rgb)> = revolved.face_roles.iter().enumerate().map(|(i, role)| (i as u32, color_for(role))).collect();
         scene.meshes.push(SceneMesh { mesh: Arc::new(revolved.mesh), color: SILVER, face_colors, opacity: 1.0 });
         scene.radius = profile.overall_length.max(profile.max_radius * 4.0).max(1.0);
