@@ -116,13 +116,13 @@ all capped.
 
 The Cam tab's **Simulate** button opens the CAM Simulation window (`ui.start` of
 `cam.simulate`). Pick a tool from the library, describe the stock box and the finished
-part top, set a rectangular pocket and a stepover percentage, and **Simulate** replays
-the zigzag path through the plain `cam.simulate` command. The report — removed volume,
-gouges with the worst depth, rapid collisions, material left above the part — sits
-beside a 3D preview of the machined block: the cut surface in steel, gouged cells in
-red, the untouched blank a shade darker, drag to orbit. The command also returns the
-machined grid (`origin`, `cell`, `stock_rows`) so the window can draw it; the window
-runs no math of its own.
+part top, and choose the path: a rectangular pocket with a stepover percentage, or
+**G-code…** to replay a post-processed file. **Simulate** runs it through the plain
+`cam.simulate` command. The report — removed volume, gouges with the worst depth, rapid
+collisions, material left above the part — sits beside a 3D preview of the machined
+block: the cut surface in steel, gouged cells in red, the untouched blank a shade
+darker, drag to orbit. The command also returns the machined grid (`origin`, `cell`,
+`stock_rows`) so the window can draw it; the window runs no math of its own.
 
 ## Roadmap
 
@@ -130,5 +130,4 @@ runs no math of its own.
    and **tool numbers mapped to library entries** so a file's `T2` picks the right tool.
 2. **Part from the design**: take the active body's tessellation and build the part
    Z-map from it, instead of a flat `part_top`.
-3. **Imported toolpaths in the window**: a file picker beside the pocket preset.
-4. **Dexel core** for 3+2 and 5-axis work behind the same command.
+3. **Dexel core** for 3+2 and 5-axis work behind the same command.

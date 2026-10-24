@@ -54,6 +54,23 @@ fn a_floor_below_the_part_shows_gouges() {
 }
 
 #[test]
+fn a_gcode_file_replaces_the_pocket() {
+    let mut h = Harness::new();
+    open_with_tool(&mut h);
+    let file = std::env::temp_dir().join(format!("solidcraft-camsim-{}.nc", std::process::id()));
+    std::fs::write(&file, "G21 G90\nG0 X5 Y20 Z12\nG1 Z5 F200\nG1 X35 Y20\nG0 Z12\nM30\n").unwrap();
+    h.app.camsim.as_mut().unwrap().gcode_file = Some(file.to_string_lossy().into_owned());
+    h.step(&json!({"widget": "Simulate"})).unwrap();
+    h.frames(2);
+    let d = h.app.camsim.as_ref().unwrap();
+    assert!(d.error.is_none(), "{:?}", d.error);
+    let r = d.report.as_ref().expect("a report after the run");
+    assert_eq!(r["gouges"], 0, "{r}");
+    assert!(r["removed_mm3"].as_f64().unwrap() > 0.0, "the G-code slot removed volume");
+    let _ = std::fs::remove_file(file);
+}
+
+#[test]
 fn a_missing_tool_is_refused_not_run() {
     let mut h = Harness::new();
     h.app.camsim = Some(super::CamSimPanel::default());
