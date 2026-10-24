@@ -392,8 +392,15 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                         d.form.vendor = vendor;
                         d.form.product_id = product;
                     }
-                    if d.selected.is_some() && ui_kit::button(ui, "Delete tool", ui_kit::Button::Normal).clicked() {
-                        d.remove_selected(app);
+                    if d.selected.is_some() {
+                        let resp = ui_kit::button(ui, "Delete tool", ui_kit::Button::Normal);
+                        if resp.hovered() {
+                            eprintln!("tooling-debug: delete hovered, rect {:?}", resp.rect);
+                        }
+                        if resp.clicked() {
+                            eprintln!("tooling-debug: delete clicked");
+                            d.remove_selected(app);
+                        }
                     }
                 });
             });
