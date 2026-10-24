@@ -404,7 +404,8 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
             ui.separator();
             ui.vertical(|ui| {
                 ui.set_width(360.0);
-                egui::Grid::new("sc_tool_form").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+                eprintln!("tooling-layout: middle avail {:.1}", ui.available_width());
+                let grid = egui::Grid::new("sc_tool_form").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
                     ui.label("Label");
                     ui.add(egui::TextEdit::singleline(&mut d.form.label).desired_width(200.0));
                     ui.end_row();
@@ -445,6 +446,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                     ui.add(egui::TextEdit::singleline(&mut d.form.product_id).desired_width(200.0));
                     ui.end_row();
                 });
+                eprintln!("tooling-layout: grid rect {:?}", grid.response.rect);
                 ui.horizontal(|ui| {
                     let label = if d.adding { "Add tool" } else { "Apply" };
                     if ui_kit::button(ui, label, ui_kit::Button::Primary).clicked() {
