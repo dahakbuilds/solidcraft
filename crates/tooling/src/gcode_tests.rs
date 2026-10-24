@@ -2,7 +2,8 @@ use super::*;
 
 #[test]
 fn a_square_pocket_decodes_to_a_cut_path() {
-    let text = "O1001\nG21 G90 G17 G40 G49 G80\nT1 M6\nS3000 M3\nG0 X15 Y20 Z5\nG1 Z-1 F200\nG1 X45 Y20\nG1 X45 Y40\nG1 X15 Y40\nG1 X15 Y20\nG0 Z10\nM30\n";
+    let text =
+        "O1001\nG21 G90 G17 G40 G49 G80\nT1 M6\nS3000 M3\nG0 X15 Y20 Z5\nG1 Z-1 F200\nG1 X45 Y20\nG1 X45 Y40\nG1 X15 Y40\nG1 X15 Y20\nG0 Z10\nM30\n";
     let path = read(text).unwrap();
     assert_eq!(path.tools, vec!["T1"]);
     assert_eq!(path.points.len(), 7, "{:?}", path.points);

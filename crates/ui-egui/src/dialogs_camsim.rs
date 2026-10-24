@@ -263,7 +263,8 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                 ui.vertical(|ui| {
                     ui.set_width(ui.available_width() * 0.46);
                     ui.set_max_height(col_h);
-                    let names: Vec<String> = std::iter::once(tr_label("— no tool —").to_string()).chain(d.entries.iter().map(|e| d.tool_label(e))).collect();
+                    let names: Vec<String> =
+                        std::iter::once(tr_label("— no tool —").to_string()).chain(d.entries.iter().map(|e| d.tool_label(e))).collect();
                     let names_ref: Vec<&str> = names.iter().map(String::as_str).collect();
                     ui.label(RichText::new(tr_label("Tool")).color(t.text_dim).small());
                     ui_kit::dropdown(ui, "sc_camsim_tool", &mut d.tool, &names_ref);

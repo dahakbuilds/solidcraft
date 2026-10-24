@@ -77,7 +77,13 @@ pub fn read(text: &str) -> Result<GcodePath> {
                     if !word.value.is_finite() {
                         return Err(invalid(format!("line {line}: `{}` is not a finite coordinate", word.letter.to_uppercase())));
                     }
-                    target[if word.letter == 'x' { 0 } else if word.letter == 'y' { 1 } else { 2 }] = Some(word.value);
+                    target[if word.letter == 'x' {
+                        0
+                    } else if word.letter == 'y' {
+                        1
+                    } else {
+                        2
+                    }] = Some(word.value);
                     has_move = true;
                 }
                 // Program, feed, spindle, block numbers and tool-length compensation
