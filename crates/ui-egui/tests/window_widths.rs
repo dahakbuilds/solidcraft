@@ -23,6 +23,11 @@ fn kit_table_limit(id: egui::Id) -> Option<f32> {
     if id == egui::Id::new("sc_prefs") {
         return Some(solidcraft_ui_egui::theme::Tokens::get().form_card_width * 10.0 / 3.0);
     }
+    // The Tool Library and CAM Simulation windows are wide two-column cards: the list or the
+    // 3D preview beside the form, so they declare 4.5 cards up front.
+    if [egui::Id::new("sc_tool_library"), egui::Id::new("sc_cam_simulate")].contains(&id) {
+        return Some(solidcraft_ui_egui::theme::Tokens::get().form_card_width * 4.5);
+    }
     [
         egui::Id::new("sc_bom"),
         egui::Id::new("sc_gesture_editor"),
@@ -75,6 +80,8 @@ fn command_dialogs_shrink_to_their_content_within_limits() {
         h.app.params = None;
         h.app.design_properties = None;
         h.app.bom = None;
+        h.app.tooling = None;
+        h.app.camsim = None;
         if spec.id == "material.properties.validate" {
             h.step(&json!({"click":{"handle":"dialog:close"}})).unwrap();
         }
