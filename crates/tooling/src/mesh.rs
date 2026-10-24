@@ -19,7 +19,7 @@ use crate::{
 pub enum Role {
     Cutting,
     Shank,
-    /// Reserved for tool assemblies (phase 3); the profile math never emits it yet.
+    /// Surfaces of a tool holder, set by [`revolve_with`] for holder envelopes.
     Holder,
 }
 
@@ -37,6 +37,12 @@ const MAX_TRIANGLES: usize = 200_000;
 
 /// Revolves `profile` about its z axis at `steps` angular steps (3..=512).
 pub fn revolve(profile: &CutterProfile, steps: usize) -> Result<Revolved> {
+    revolve_with(profile, steps, Role::Shank)
+}
+
+/// As [`revolve`], but non-cutting segments take `non_cutting` as their role (holders pass
+/// [`Role::Holder`] so a viewer can paint the holder apart from a cutter's shank).
+pub fn revolve_with(profile: &CutterProfile, steps: usize, non_cutting: Role) -> Result<Revolved> {
     if profile.segments.is_empty() {
         return Err(invalid("cutter profile has no segments"));
     }
@@ -61,7 +67,7 @@ pub fn revolve(profile: &CutterProfile, steps: usize) -> Result<Revolved> {
             face_of.push(i as u32);
         }
     }
-    let face_roles: Vec<Role> = profile.segments.iter().map(|s| if s.cutting() { Role::Cutting } else { Role::Shank }).collect();
+    let face_roles: Vec<Role> = profile.segments.iter().map(|s| if s.cutting() { Role::Cutting } else { non_cutting }).collect();
     if polyline.len() < 2 {
         return Err(invalid("cutter profile is degenerate"));
     }

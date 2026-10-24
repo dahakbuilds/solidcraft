@@ -126,7 +126,7 @@ const FLAT_BALL: &[ParamSpec] = &[
     length_opt("flute_length", 0.1, 300.0, 20.0, "axial length of the cutting flutes"),
     length_opt("overall_length", 1.0, 600.0, 70.0, "tip to top of the tool"),
     length_opt("shank_diameter", 0.1, 100.0, 10.0, "clamp (arbor) diameter"),
-    angle("taper_angle", 0.0, 20.0, 0.0, "included draft angle of the tapered body (0 = straight)"),
+    angle("taper_angle", 0.0, 20.0, 0.0, "included taper angle of the cutting body, widening toward the shank (0 = straight)"),
 ];
 const BULL: &[ParamSpec] = &[
     length_opt("cutting_diameter", 0.1, 63.0, 10.0, "cutting diameter"),
@@ -134,7 +134,7 @@ const BULL: &[ParamSpec] = &[
     length_opt("flute_length", 0.1, 300.0, 20.0, "axial length of the cutting flutes"),
     length_opt("overall_length", 1.0, 600.0, 70.0, "tip to top of the tool"),
     length_opt("shank_diameter", 0.1, 100.0, 10.0, "clamp (arbor) diameter"),
-    angle("taper_angle", 0.0, 20.0, 0.0, "included draft angle of the tapered body (0 = straight)"),
+    angle("taper_angle", 0.0, 20.0, 0.0, "included taper angle of the cutting body, widening toward the shank (0 = straight)"),
 ];
 const DRILL: &[ParamSpec] = &[
     length_opt("cutting_diameter", 0.05, 63.0, 6.0, "drill diameter"),
@@ -243,15 +243,12 @@ pub fn validate_params(family: Family, params: &BTreeMap<String, f64>) -> Result
     let get = |name: &str| value(family, params, name).unwrap_or(f64::NAN);
     let ok = |b: bool, why: &str| if b { Ok(()) } else { Err(invalid(format!("invalid `{}` parameters: {why}", family.as_str()))) };
     match family {
-        Family::EndMillFlat => ok(get("flute_length") < get("overall_length"), "flute_length must be less than overall_length")
-            .and_then(|()| tapered_ok(get("cutting_diameter") / 2.0, get("flute_length"), get("taper_angle"))),
+        Family::EndMillFlat => ok(get("flute_length") < get("overall_length"), "flute_length must be less than overall_length"),
         Family::EndMillBall => ok(get("flute_length") >= get("cutting_diameter") / 2.0, "flute_length must reach at least the ball radius")
-            .and_then(|()| ok(get("flute_length") < get("overall_length"), "flute_length must be less than overall_length"))
-            .and_then(|()| tapered_ok(get("cutting_diameter") / 2.0, get("flute_length") - get("cutting_diameter") / 2.0, get("taper_angle"))),
+            .and_then(|()| ok(get("flute_length") < get("overall_length"), "flute_length must be less than overall_length")),
         Family::EndMillBull => ok(2.0 * get("corner_radius") < get("cutting_diameter"), "corner_radius must be less than the cutting radius")
             .and_then(|()| ok(get("flute_length") >= get("corner_radius"), "flute_length must reach at least the corner radius"))
-            .and_then(|()| ok(get("flute_length") < get("overall_length"), "flute_length must be less than overall_length"))
-            .and_then(|()| tapered_ok(get("cutting_diameter") / 2.0, get("flute_length") - get("corner_radius"), get("taper_angle"))),
+            .and_then(|()| ok(get("flute_length") < get("overall_length"), "flute_length must be less than overall_length")),
         Family::Drill => {
             let depth = get("cutting_diameter") / 2.0 / half_tan(get("point_angle"));
             ok(get("flute_length") >= depth, "flute_length must reach at least the point cone")
@@ -282,19 +279,6 @@ pub fn validate_params(family: Family, params: &BTreeMap<String, f64>) -> Result
             .and_then(|()| ok(get("flute_length") < get("overall_length"), "flute_length must be less than overall_length")),
         Family::Counterbore => ok(get("pilot_diameter") < get("counterbore_diameter"), "pilot_diameter must be less than counterbore_diameter")
             .and_then(|()| ok(get("pilot_length") + get("counterbore_depth") < get("overall_length"), "pilot plus counterbore must fit within overall_length")),
-    }
-}
-
-/// A drafted (tapered) cutting body must not pinch to nothing: over its straight length `run`
-/// the radius shrinks by `run * tan(half(taper_angle))` and must stay positive.
-fn tapered_ok(radius: f64, run: f64, taper_angle: f64) -> Result<()> {
-    if taper_angle <= 0.0 {
-        return Ok(());
-    }
-    if radius - run * half_tan(taper_angle) > 0.0 {
-        Ok(())
-    } else {
-        Err(invalid("invalid taper_angle: the drafted body pinches to nothing before the flute ends"))
     }
 }
 

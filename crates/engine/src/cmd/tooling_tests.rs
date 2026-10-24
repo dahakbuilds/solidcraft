@@ -197,3 +197,60 @@ fn open_creates_a_missing_library_and_reopens_it() {
     assert!(!s.is_dirty());
     assert!(s.execute("tool.library.open", &json!({"path": "not-a-library.txt"})).is_err());
 }
+
+#[test]
+fn holders_lists_the_catalogue() {
+    let mut s = session();
+    let out = s.execute("tool.holders", &json!({})).unwrap();
+    let list = out["holders"].as_array().unwrap();
+    assert!(list.len() >= 12);
+    assert!(list.iter().any(|h| h["id"] == "er32_bt40"));
+    for h in list {
+        assert!(h["bore_min"].as_f64().unwrap() < h["bore_max"].as_f64().unwrap(), "{}", h["id"]);
+        assert!(h["nose_length"].as_f64().unwrap() > 0.0);
+    }
+}
+
+#[test]
+fn assembly_composes_tool_and_holder() {
+    let mut s = session();
+    // er32_bt40: nose 30 mm below the girth, taper 55 mm above; stickout 60 from the tip.
+    let out = s
+        .execute("tool.assembly", &json!({"family": "end_mill_flat", "params": flat_params(), "holder_type": "er32_bt40", "stickout": 60.0, "steps": 12}))
+        .unwrap();
+    assert_eq!(out["reach"].as_f64().unwrap(), 30.0);
+    assert_eq!(out["overall_length"].as_f64().unwrap(), 115.0);
+    let mesh = &out["mesh"];
+    let tris = mesh["triangles"].as_array().unwrap();
+    assert!(!tris.is_empty());
+    assert_eq!(tris.len(), mesh["roles"].as_array().unwrap().len());
+    let roles = mesh["roles"].as_array().unwrap();
+    assert!(roles.iter().any(|r| r == "cutting"));
+    assert!(roles.iter().any(|r| r == "holder"));
+    // a stickout inside the holder nose is refused
+    assert!(s.execute("tool.assembly", &json!({"family": "end_mill_flat", "params": flat_params(), "holder_type": "er32_bt40", "stickout": 10.0})).is_err());
+    // an unknown holder is refused
+    assert!(s.execute("tool.assembly", &json!({"family": "end_mill_flat", "params": flat_params(), "holder_type": "nope", "stickout": 60.0})).is_err());
+}
+
+#[test]
+fn entries_carry_holder_and_stickout() {
+    let mut s = session();
+    let file = File::new();
+    create(&mut s, &file);
+    let out = add(&mut s, &file, json!({"holder_type": "er32_bt40", "stickout": 60.0}));
+    let id = out["entry"].as_str().unwrap().to_string();
+    let seen = s.execute("tool.library.inspect", &json!({"path": file.0})).unwrap();
+    assert_eq!(seen["library"]["entries"][0]["holder_type"], "er32_bt40");
+    assert_eq!(seen["library"]["entries"][0]["stickout"], 60.0);
+    // editing to clear the holder clears the stickout with it
+    s.execute("tool.library.edit", &json!({"path": file.0, "entry": id, "holder_type": ""})).unwrap();
+    let seen = s.execute("tool.library.inspect", &json!({"path": file.0})).unwrap();
+    let entry = &seen["library"]["entries"][0];
+    assert!(entry.get("holder_type").is_none());
+    assert!(entry.get("stickout").is_none());
+    // a stickout without a holder is refused
+    assert!(s.execute("tool.library.add", &json!({"path": file.0, "family": "end_mill_flat", "label": "x", "params": flat_params(), "stickout": 60.0})).is_err());
+    // a stickout inside the holder nose is refused
+    assert!(s.execute("tool.library.add", &json!({"path": file.0, "family": "end_mill_flat", "label": "x", "params": flat_params(), "holder_type": "er32_bt40", "stickout": 5.0})).is_err());
+}

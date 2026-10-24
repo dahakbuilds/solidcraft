@@ -109,20 +109,21 @@ fn hostile_parameters_never_build_a_profile() {
 }
 
 #[test]
-fn tapered_end_mills_draft_the_body() {
-    // a 7° included draft on a 10 mm flat: the wall pinches by flute * tan(3.5°)
+fn tapered_end_mills_widen_toward_the_shank() {
+    // a 7° included taper on a 10 mm flat: the wall widens by flute * tan(3.5°) climbing up
     let p = params(&[("cutting_diameter", 10.0), ("flute_length", 20.0), ("overall_length", 70.0), ("shank_diameter", 10.0), ("taper_angle", 7.0)]);
     let prof = of(Family::EndMillFlat, &p).unwrap();
-    assert!(approx(prof.max_radius, 5.0));
-    assert!(approx(prof.radius_at(10.0).unwrap(), 5.0 - 10.0 * (3.5f64.to_radians()).tan()));
-    // a ball nose keeps its sphere; only the wall above the equator is drafted
+    assert!(approx(prof.radius_at(10.0).unwrap(), 5.0 + 10.0 * (3.5f64.to_radians()).tan()));
+    assert!(approx(prof.max_radius, 5.0 + 20.0 * (3.5f64.to_radians()).tan()));
+    // a ball nose keeps its sphere; only the wall above the equator is tapered
     let p = params(&[("cutting_diameter", 10.0), ("flute_length", 20.0), ("overall_length", 50.0), ("shank_diameter", 10.0), ("taper_angle", 7.0)]);
     let prof = of(Family::EndMillBall, &p).unwrap();
     assert!(approx(prof.radius_at(5.0).unwrap(), 5.0));
-    assert!(approx(prof.radius_at(15.0).unwrap(), 5.0 - 10.0 * (3.5f64.to_radians()).tan()));
-    // a draft that pinches the body to nothing before the flute ends is refused
-    let p = params(&[("cutting_diameter", 10.0), ("flute_length", 100.0), ("overall_length", 120.0), ("shank_diameter", 10.0), ("taper_angle", 20.0)]);
-    assert!(of(Family::EndMillFlat, &p).is_err());
+    assert!(approx(prof.radius_at(15.0).unwrap(), 5.0 + 10.0 * (3.5f64.to_radians()).tan()));
+    // zero taper stays straight (the old behaviour)
+    let p = params(&[("cutting_diameter", 10.0), ("flute_length", 20.0), ("overall_length", 70.0), ("shank_diameter", 10.0)]);
+    let prof = of(Family::EndMillFlat, &p).unwrap();
+    assert!(approx(prof.max_radius, 5.0));
 }
 
 #[test]

@@ -129,6 +129,12 @@ pub struct ToolEntry {
     pub product_url: Option<String>,
     /// The family's parameters, in millimetres and degrees.
     pub params: BTreeMap<String, f64>,
+    /// The catalogue holder this tool runs in, e.g. `er32_bt40` (see `tool.holders`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub holder_type: Option<String>,
+    /// Distance from the holder's girth line to the tool tip, in millimetres.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stickout: Option<f64>,
     /// The spindle-side interface (holder top, or the tool shank's interface).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub machine_connection: Option<Connection>,
@@ -153,6 +159,8 @@ struct Content<'a> {
     product_id: &'a Option<String>,
     product_url: &'a Option<String>,
     params: &'a BTreeMap<String, f64>,
+    holder_type: &'a Option<String>,
+    stickout: &'a Option<f64>,
     machine_connection: &'a Option<Connection>,
     work_connection: &'a Option<Connection>,
     notes: &'a Option<String>,
@@ -172,6 +180,8 @@ impl ToolEntry {
             product_id: &self.product_id,
             product_url: &self.product_url,
             params: &self.params,
+            holder_type: &self.holder_type,
+            stickout: &self.stickout,
             machine_connection: &self.machine_connection,
             work_connection: &self.work_connection,
             notes: &self.notes,
@@ -228,6 +238,17 @@ impl ToolEntry {
         self.provenance.validate()?;
         for conn in self.machine_connection.iter().chain(self.work_connection.iter()) {
             conn.validate()?;
+        }
+        match (&self.holder_type, self.stickout) {
+            (None, None) => {}
+            (None, Some(_)) => return Err(invalid("stickout is only meaningful together with a holder")),
+            (Some(_), None) => return Err(invalid("an entry with a holder needs a stickout")),
+            (Some(type_id), Some(stickout)) => {
+                let holder = crate::holder::find(type_id).ok_or_else(|| invalid(format!("unknown holder type `{type_id}`")))?;
+                if !stickout.is_finite() || *stickout <= holder.nose_len || *stickout > 500.0 {
+                    return Err(invalid("stickout must be greater than the holder nose length and at most 500 mm"));
+                }
+            }
         }
         if self.params.len() > MAX_PARAMS {
             return Err(invalid(format!("at most {MAX_PARAMS} parameters per tool")));

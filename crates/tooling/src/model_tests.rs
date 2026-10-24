@@ -11,6 +11,8 @@ fn entry(family: &str, pairs: &[(&str, f64)]) -> ToolEntry {
         product_id: Some("TM-10".into()),
         product_url: None,
         params: pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+        holder_type: None,
+        stickout: None,
         machine_connection: None,
         work_connection: Some(Connection { standard: "hsk-a".into(), size: "63".into() }),
         notes: None,
@@ -115,4 +117,31 @@ fn library_identity_rules() {
     assert!(ToolLibrary::new("User.Test", "Upper").is_err());
     assert!(ToolLibrary::new("user.test", "").is_err());
     assert!(ToolLibrary::new("user.test", " Padded ").is_err());
+}
+
+#[test]
+fn holder_and_stickout_round_trip_and_rules() {
+    let mut e = flat_entry();
+    e.holder_type = Some("er32_bt40".into());
+    e.stickout = Some(60.0);
+    e.assign_id("user.test").unwrap();
+    assert!(e.validate("user.test").is_ok());
+    // stickout without a holder is refused
+    let mut e = flat_entry();
+    e.stickout = Some(60.0);
+    assert!(e.assign_id("user.test").is_err());
+    // a holder without a stickout is refused
+    let mut e = flat_entry();
+    e.holder_type = Some("er32_bt40".into());
+    assert!(e.assign_id("user.test").is_err());
+    // an unknown holder type is refused
+    let mut e = flat_entry();
+    e.holder_type = Some("er99_bt99".into());
+    e.stickout = Some(60.0);
+    assert!(e.assign_id("user.test").is_err());
+    // a stickout inside the holder nose is refused (er32_bt40 nose is 30 mm)
+    let mut e = flat_entry();
+    e.holder_type = Some("er32_bt40".into());
+    e.stickout = Some(25.0);
+    assert!(e.assign_id("user.test").is_err());
 }

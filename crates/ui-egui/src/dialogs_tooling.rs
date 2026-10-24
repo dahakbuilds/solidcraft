@@ -1,8 +1,8 @@
 //! The Tool Library window: browse, add, edit and remove milling cutters in a library file,
 //! with a live 3D preview of the revolved profile in the classic CAM colours (gold cutting
-//! surfaces, silver shank, teal holders when assemblies arrive). The toolbar's Tool Library
-//! (`ui.start` of `tool.library.open`) opens it; every action runs a `tool.*` command — the
-//! window never touches the library file itself.
+//! surfaces, silver shank, gray holder). The toolbar's Tool Library (`ui.start` of
+//! `tool.library.open`) opens it; every action runs a `tool.*` command — the window never
+//! touches the library file itself.
 
 use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
@@ -13,17 +13,17 @@ use egui::{Color32, ColorImage, RichText, Sense, TextureHandle, Vec2};
 use serde_json::{Value, json};
 use solidcraft_engine::geom::Vec3;
 use solidcraft_engine::render::{Camera, Rgb, Scene, SceneMesh, render};
-use solidcraft_engine::tooling::{Family, mesh, profile};
+use solidcraft_engine::tooling::{Assembly, Family, assembly, mesh, profile};
 
 use crate::SolveApp;
 use crate::i18n::tr_label;
 use crate::theme::Tokens;
 use crate::ui_kit;
 
-/// The classic CAM look: coated cutter gold, bare steel silver, Windows-95 teal for holders.
+/// The classic CAM look: coated cutter gold, bare steel silver, anodized gray for holders.
 const GOLD: Rgb = Rgb(201, 162, 39);
 const SILVER: Rgb = Rgb(184, 188, 192);
-const TEAL: Rgb = Rgb(0, 128, 128);
+const GRAY: Rgb = Rgb(138, 143, 152);
 /// Preview resolution in logical points and the angular steps of the revolve.
 const PREVIEW_PT: f32 = 260.0;
 const REVOLVE_STEPS: usize = 48;
@@ -36,12 +36,23 @@ pub struct FamilyInfo {
     pub params: Vec<Value>,
 }
 
+/// One catalogue holder as `tool.holders` describes it.
+pub struct HolderInfo {
+    pub id: String,
+    pub label: String,
+    pub nose_len: f64,
+    pub overall_length: f64,
+}
+
 /// The entry form. Parameters are free text until Apply, so typing never fights the user.
 #[derive(Default)]
 pub struct Form {
     pub label: String,
     pub family: usize,
     pub params: Vec<String>,
+    /// 0 = no holder, otherwise an index + 1 into the holder catalogue.
+    pub holder: usize,
+    pub stickout: String,
     pub vendor: String,
     pub product_id: String,
     pub notes: String,
@@ -52,6 +63,7 @@ pub struct ToolingPanel {
     pub path: String,
     library: Value,
     families: Vec<FamilyInfo>,
+    holders: Vec<HolderInfo>,
     search: String,
     /// The picked entry's id, or None while composing a new tool.
     selected: Option<String>,
@@ -68,6 +80,7 @@ impl Default for ToolingPanel {
             path: String::new(),
             library: json!({"entries": []}),
             families: Vec::new(),
+            holders: Vec::new(),
             search: String::new(),
             selected: None,
             form: Form::default(),
@@ -81,7 +94,7 @@ impl Default for ToolingPanel {
 
 /// Open the window on the default user library.
 pub fn open(app: &mut SolveApp) {
-    let mut d = ToolingPanel { families: families(app), ..Default::default() };
+    let mut d = ToolingPanel { families: families(app), holders: holders(app), ..Default::default() };
     d.reload(app);
     app.tooling = Some(d);
 }
@@ -96,6 +109,21 @@ fn families(app: &mut SolveApp) -> Vec<FamilyInfo> {
             id: f["id"].as_str().unwrap_or_default().to_string(),
             label: f["label"].as_str().unwrap_or_default().to_string(),
             params: f["params"].as_array().cloned().unwrap_or_default(),
+        })
+        .collect()
+}
+
+fn holders(app: &mut SolveApp) -> Vec<HolderInfo> {
+    let Ok(v) = app.session.execute("tool.holders", &json!({})) else { return Vec::new() };
+    v["holders"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|h| HolderInfo {
+            id: h["id"].as_str().unwrap_or_default().to_string(),
+            label: h["label"].as_str().unwrap_or_default().to_string(),
+            nose_len: h["nose_length"].as_f64().unwrap_or_default(),
+            overall_length: h["overall_length"].as_f64().unwrap_or_default(),
         })
         .collect()
 }
@@ -149,6 +177,15 @@ impl ToolingPanel {
         }
     }
 
+    /// When the form carries a holder, frame the whole assembly instead of the bare tool.
+    fn fit_assembly(&mut self) {
+        let taper = self.holders.get(self.form.holder.wrapping_sub(1)).map(|h| h.overall_length - h.nose_len);
+        let stickout: Option<f64> = self.form.stickout.trim().parse().ok().filter(|v: &f64| v.is_finite() && *v > 0.0);
+        if let (Some(taper), Some(stickout)) = (taper, stickout) {
+            self.fit_camera(stickout + taper);
+        }
+    }
+
     /// Fill the form from a stored entry (parameters in the schema's order).
     fn fill(&mut self, entry: &Value) {
         self.form.family = self.families.iter().position(|f| f.id == entry["family"].as_str().unwrap_or_default()).unwrap_or(0);
@@ -171,9 +208,15 @@ impl ToolingPanel {
         self.form.vendor = entry["vendor"].as_str().unwrap_or_default().to_string();
         self.form.product_id = entry["product_id"].as_str().unwrap_or_default().to_string();
         self.form.notes = entry["notes"].as_str().unwrap_or_default().to_string();
+        self.form.holder = match entry["holder_type"].as_str() {
+            Some(type_id) => self.holders.iter().position(|h| h.id == type_id).map(|i| i + 1).unwrap_or(0),
+            None => 0,
+        };
+        self.form.stickout = entry["stickout"].as_f64().map(|v| format!("{v}")).unwrap_or_default();
         if let Some(overall) = entry["params"]["overall_length"].as_f64() {
             self.fit_camera(overall);
         }
+        self.fit_assembly();
     }
 
     /// Start composing a new tool with the family's defaults.
@@ -184,6 +227,8 @@ impl ToolingPanel {
         self.form.vendor = String::new();
         self.form.product_id = String::new();
         self.form.notes = String::new();
+        self.form.holder = 0;
+        self.form.stickout = String::new();
         self.reset_params();
     }
 
@@ -219,6 +264,18 @@ impl ToolingPanel {
     fn form_request(&self) -> std::result::Result<Value, String> {
         let fam = self.family().ok_or("no tool family is selected")?;
         let mut req = json!({"family": fam.id, "label": self.form.label.trim(), "params": self.params_json()?});
+        if self.form.holder > 0 {
+            let holder = self.holders.get(self.form.holder - 1).ok_or("holder is no longer in the catalogue")?;
+            let stickout: f64 = self.form.stickout.trim().parse().map_err(|_| "stickout must be a number".to_string())?;
+            if !stickout.is_finite() || stickout <= 0.0 {
+                return Err("stickout must be a positive length".into());
+            }
+            req["holder_type"] = json!(holder.id);
+            req["stickout"] = json!(stickout);
+        } else if !self.adding {
+            // clearing the holder also clears the stickout on the engine side
+            req["holder_type"] = json!("");
+        }
         if !self.form.vendor.trim().is_empty() {
             req["vendor"] = json!(self.form.vendor.trim());
         }
@@ -277,13 +334,15 @@ impl ToolingPanel {
         }
     }
 
-    /// The preview's cache key: family, parameters and camera.
+    /// The preview's cache key: family, parameters, holder, stickout and camera.
     fn preview_key(&self) -> u64 {
         let mut h = DefaultHasher::new();
         self.form.family.hash(&mut h);
         for p in &self.form.params {
             p.trim().hash(&mut h);
         }
+        self.form.holder.hash(&mut h);
+        self.form.stickout.trim().hash(&mut h);
         for v in [self.cam.yaw, self.cam.pitch, self.cam.distance] {
             v.to_bits().hash(&mut h);
         }
@@ -312,18 +371,32 @@ impl ToolingPanel {
         let params: BTreeMap<String, f64> =
             self.params_json().ok()?.as_object()?.iter().map(|(k, v)| (k.clone(), v.as_f64().unwrap_or_default())).collect();
         let profile = profile::of(family, &params).ok()?;
-        let revolved = mesh::revolve(&profile, REVOLVE_STEPS).ok()?;
+        let (revolved, overall, radius) = match self.assembly_of(&profile, &params) {
+            Some(built) => (built.mesh, built.overall_length, built.max_radius),
+            None => (mesh::revolve(&profile, REVOLVE_STEPS).ok()?, profile.overall_length, profile.max_radius),
+        };
         let t = Tokens::get();
         let mut scene = Scene { background: Some((rgb(t.viewport_top), rgb(t.viewport_bottom))), ..Default::default() };
         let face_colors: Vec<(u32, Rgb)> = revolved.face_roles.iter().enumerate().map(|(i, role)| (i as u32, color_for(role))).collect();
         scene.meshes.push(SceneMesh { mesh: Arc::new(revolved.mesh), color: SILVER, face_colors, opacity: 1.0 });
-        scene.radius = profile.overall_length.max(profile.max_radius * 4.0).max(1.0);
+        scene.radius = overall.max(radius * 4.0).max(1.0);
         let mut cam = self.cam;
-        cam.target = Vec3::new(0.0, 0.0, profile.overall_length / 2.0);
+        cam.target = Vec3::new(0.0, 0.0, overall / 2.0);
         let ppp = ctx.pixels_per_point().clamp(1.0, 2.0);
         let side = ((PREVIEW_PT * ppp) as usize).clamp(8, 1024);
         let canvas = render(&scene, &cam, side, side);
         Some(ColorImage::from_rgba_unmultiplied([canvas.w, canvas.h], &canvas.rgba))
+    }
+
+    /// The form's tool in its holder, when the form carries both; None means preview the bare tool.
+    fn assembly_of(&self, profile: &profile::CutterProfile, params: &BTreeMap<String, f64>) -> Option<Assembly> {
+        let holder = self.holders.get(self.form.holder.wrapping_sub(1))?;
+        let stickout: f64 = self.form.stickout.trim().parse().ok()?;
+        if !stickout.is_finite() || stickout <= 0.0 {
+            return None;
+        }
+        let bore = params.get("shank_diameter").copied().unwrap_or(0.0);
+        assembly::compose(profile, &holder.id, bore, stickout, REVOLVE_STEPS).ok()
     }
 }
 
@@ -336,7 +409,7 @@ fn color_for(role: &mesh::Role) -> Rgb {
     match role {
         mesh::Role::Cutting => GOLD,
         mesh::Role::Shank => SILVER,
-        mesh::Role::Holder => TEAL,
+        mesh::Role::Holder => GRAY,
     }
 }
 
@@ -401,12 +474,14 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                         d.start_add();
                     }
                     if ui_kit::button(ui, "Duplicate", ui_kit::Button::Normal).clicked() {
-                        let (label, family, params, vendor, product) = (
+                        let (label, family, params, vendor, product, holder, stickout) = (
                             format!("{} copy", d.form.label),
                             d.form.family,
                             d.form.params.clone(),
                             d.form.vendor.clone(),
                             d.form.product_id.clone(),
+                            d.form.holder,
+                            d.form.stickout.clone(),
                         );
                         d.start_add();
                         d.form.label = label;
@@ -414,6 +489,8 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                         d.form.params = params;
                         d.form.vendor = vendor;
                         d.form.product_id = product;
+                        d.form.holder = holder;
+                        d.form.stickout = stickout;
                     }
                     if d.selected.is_some() && ui_kit::button(ui, "Delete tool", ui_kit::Button::Normal).clicked() {
                         d.remove_selected(app);
@@ -463,6 +540,26 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                     ui.label("Product code");
                     ui.add(egui::TextEdit::singleline(&mut d.form.product_id).desired_width(200.0));
                     ui.end_row();
+                    let holder_names: Vec<String> = std::iter::once("None".to_string()).chain(d.holders.iter().map(|h| h.label.clone())).collect();
+                    let holder_names: Vec<&str> = holder_names.iter().map(String::as_str).collect();
+                    let before_holder = d.form.holder;
+                    ui.label("Holder");
+                    egui::ComboBox::from_id_salt("sc_tool_holder")
+                        .selected_text(holder_names.get(d.form.holder).copied().unwrap_or("?"))
+                        .show_ui(ui, |ui| {
+                            for (i, name) in holder_names.iter().enumerate() {
+                                ui.selectable_value(&mut d.form.holder, i, *name);
+                            }
+                        });
+                    ui.end_row();
+                    if d.form.holder != before_holder {
+                        d.fit_assembly();
+                    }
+                    if d.form.holder > 0 {
+                        ui.label("Stickout (mm)");
+                        ui.add(egui::TextEdit::singleline(&mut d.form.stickout).desired_width(90.0));
+                        ui.end_row();
+                    }
                 });
                 ui.horizontal(|ui| {
                     let label = if d.adding { "Add tool" } else { "Apply" };
