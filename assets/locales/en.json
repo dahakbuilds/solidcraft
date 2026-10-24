@@ -646,6 +646,7 @@
   "cmd.cam_fixture_add": "Add CAM Fixture",
   "cmd.cam_fixture_place": "Place CAM Fixture",
   "cmd.cam_fixture_remove": "Remove CAM Fixture",
+  "cmd.cam_machine": "Machine Stock to Part",
   "cmd.cam_operation_add": "Add CAM Operation",
   "cmd.cam_operation_remove": "Remove CAM Operation",
   "cmd.cam_operation_rename": "Rename CAM Operation",

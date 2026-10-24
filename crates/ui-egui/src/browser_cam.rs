@@ -62,9 +62,9 @@ fn row(ui: &mut Ui, label: &str, suffix: &str) {
 
 pub fn rows(app: &mut SolveApp, ui: &mut Ui) {
     let t = Tokens::get();
-    ScrollArea::vertical().id_source("cam-tree").auto_shrink([false, false]).show(ui, |ui| {
+    ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         if ui.button(tr("ui.cam_add_operation")).clicked() {
-            let _ = app.run("cam.operation.add", &json!({}));
+            let _ = app.run("cam.operation.add", json!({}));
         }
         if ui.button(tr("ui.cam_tool_library")).clicked() {
             app.start("tool.library.open");

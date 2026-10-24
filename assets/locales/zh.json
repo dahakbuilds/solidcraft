@@ -646,6 +646,7 @@
   "cmd.cam_fixture_add": "添加CAM夹具",
   "cmd.cam_fixture_place": "放置CAM夹具",
   "cmd.cam_fixture_remove": "移除CAM夹具",
+  "cmd.cam_machine": "加工毛坯为零件",
   "cmd.cam_operation_add": "添加CAM工序",
   "cmd.cam_operation_remove": "移除CAM工序",
   "cmd.cam_operation_rename": "重命名CAM工序",

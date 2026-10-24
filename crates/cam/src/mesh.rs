@@ -16,7 +16,7 @@ fn finite(v: &[f64; 3]) -> bool {
 /// Append a quad, wound counter-clockwise seen from `outward` (the winding is
 /// corrected if the corners came in backwards).
 fn push_quad(mesh: &mut Mesh, corners: [Vec3; 4], outward: Vec3) {
-    let [p0, p1, p2, p3] = corners;
+    let [p0, p1, p2, _] = corners;
     let face_normal = (p1 - p0).cross(p2 - p0);
     let (order, normal): ([usize; 4], Vec3) = if face_normal.dot(outward) >= 0.0 {
         ([0, 1, 2, 3], outward)

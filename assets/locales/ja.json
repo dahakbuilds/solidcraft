@@ -646,6 +646,7 @@
   "cmd.cam_fixture_add": "治具を追加",
   "cmd.cam_fixture_place": "治具を配置",
   "cmd.cam_fixture_remove": "治具を削除",
+  "cmd.cam_machine": "材料を加工して部品に",
   "cmd.cam_operation_add": "CAMオペレーションを追加",
   "cmd.cam_operation_remove": "CAMオペレーションを削除",
   "cmd.cam_operation_rename": "CAMオペレーションの名前を変更",

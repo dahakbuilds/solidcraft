@@ -288,8 +288,7 @@ fn gcode_load_sets_up_the_operation() {
 }
 
 #[test]
-fn gcode_load_refuses_bad_input() {
-    let mut s = Session::default();
+fn gcode_load_refuses_bad_input() {    let mut s = Session::default();
     // a file that is not there
     assert!(s.execute("cam.toolpath.load", &json!({"file": "solidcraft-no-such-toolpath.nc"})).is_err());
     let empty = gcode_file("; nothing but comments\n");
@@ -299,6 +298,55 @@ fn gcode_load_refuses_bad_input() {
     assert!(s.execute("cam.toolpath.load", &json!({"file": empty, "format": "cls"})).is_err(), "unknown format");
     assert!(s.execute("cam.toolpath.load", &json!({"file": empty, "allowance": -1})).is_err());
     assert!(s.execute("cam.toolpath.load", &json!({"file": empty, "id": 999})).is_err(), "unknown operation");
+}
+
+#[test]
+fn cam_machine_turns_gcode_into_a_body() {
+    let mut s = Session::default();
+    let file = gcode_file("O1\nG21 G90\nT1 M6\nG0 X2 Y10 Z3\nG1 Z1 F100\nG1 X28 Y10\nG0 Z3\nM30\n");
+    let out = s
+        .execute(
+            "cam.machine",
+            &json!({
+                "family": "end_mill_flat",
+                "params": flat_params(),
+                "file": file,
+                "stock": {"min": [0.0, 0.0, 0.0], "max": [30.0, 20.0, 2.0]},
+                "part_top": 1.0,
+                "cell": 1.0,
+                "body": "Plate",
+            }),
+        )
+        .unwrap();
+    let body = out["body"].as_str().unwrap_or_default().to_string();
+    assert!(!body.is_empty(), "a body came back: {out}");
+    assert!(out["removed_mm3"].as_f64().unwrap_or(0.0) > 0.0, "material was removed: {out}");
+    assert_eq!(out["gouges"], 0, "the cut stops at the part top");
+    let names: Vec<String> = s.model.state().bodies.iter().map(|b| b.name.clone()).collect();
+    assert!(names.contains(&body), "the body is in the design: {names:?} vs {body}");
+}
+
+#[test]
+fn cam_machine_refuses_bad_requests() {
+    let mut s = Session::default();
+    // No tool family.
+    assert!(s.execute("cam.machine", &json!({"path": [[0, 0, 0]], "stock": {"min": [0, 0, 0], "max": [1, 1, 1]}})).is_err());
+    // Stock with no height.
+    assert!(
+        s.execute(
+            "cam.machine",
+            &json!({"family": "end_mill_flat", "params": flat_params(), "path": [[0, 0, 0], [1, 0, 0]], "stock": {"min": [0.0, 0.0, 0.0], "max": [10.0, 10.0, 0.0]}})
+        )
+        .is_err()
+    );
+    // Unknown extra keys are refused (they reach the flattened simulation request).
+    assert!(
+        s.execute(
+            "cam.machine",
+            &json!({"family": "end_mill_flat", "params": flat_params(), "path": [[0, 0, 0], [1, 0, 0]], "stock": {"min": [0.0, 0.0, 0.0], "max": [10.0, 10.0, 2.0]}, "smuggled": 1})
+        )
+        .is_err()
+    );
 }
 
 #[test]

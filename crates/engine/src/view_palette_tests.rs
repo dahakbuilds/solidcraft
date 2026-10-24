@@ -30,6 +30,9 @@ const MARK: Palette = Palette {
         curvature: [[0.17, 0.18, 0.19], [0.21, 0.22, 0.23], [0.24, 0.25, 0.26]],
         hatch: true,
     },
+    cam_rapid: Rgb(58, 59, 60),
+    cam_feed: Rgb(61, 62, 63),
+    stock: Rgb(64, 65, 66),
 };
 
 /// Each curve's lines at x = its index, so a line tells which curve it draws.

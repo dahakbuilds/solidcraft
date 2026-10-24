@@ -884,7 +884,7 @@ fn browser_tabs(app: &mut SolveApp, ui: &mut egui::Ui) {
             crate::icons::glyphs::brand_mark_silhouette(ui.painter(), r.center(), 16.0, t.text.gamma_multiply(if active { 1.0 } else { 0.55 }));
         }
         if active {
-            ui.painter().hline(r.shrink_x(9.0).x_range(), r.bottom() - 1.0, egui::Stroke::new(2.0, t.accent));
+            ui.painter().hline((r.min.x + 9.0)..=(r.max.x - 9.0), r.bottom() - 1.0, egui::Stroke::new(2.0, t.accent));
         }
         if response.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(label).clicked() {
             app.tree.cam_tab = cam_tab;

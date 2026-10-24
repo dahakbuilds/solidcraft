@@ -14,6 +14,8 @@ use solidcraft_tooling::{self as tooling, sim};
 pub static COMMANDS: &[CommandSpec] = &[
     CommandSpec::new("cam.simulate", "Simulate Toolpath", simulate_toolpath).icon("inspect").noundo().doc_only()
         .params("family, params {…}, path [[x,y,z] | {x,y,z,cut?}, …] or file (a G-code toolpath, format gcode: G0/G1 linear moves, G90/G91, G20/G21, T/M6; arcs refused); stock {min:[x,y,z], max:[x,y,z]}, part_top? (finished height, default the stock top), cell? mm (default footprint/200), tolerance? mm (default 0.05), unit? mm|inch; Z-map replay: removed volume, gouges below the part, material left above it, and rapid collisions"),
+    CommandSpec::new("cam.machine", "Machine Stock to Part", machine_stock).at("MANUFACTURE", "SIMULATE").icon("cut")
+        .params("as cam.simulate (family, params, path or file, stock {min, max}, part_top?, cell?, tolerance?, unit?), plus body? (name for the finished component); replays the toolpath over the stock and makes the machined surface a body of the design"),
     CommandSpec::new("cam.setup", "CAM Setup", setup).icon("list").noundo().doc_only()
         .params("→ operations [{id, name, tool?, stock?, toolpath?, comment?}], fixtures [{id, name, path, origin}], origin {position, x_axis, z_axis}, tool_library?"),
     CommandSpec::new("cam.operation.add", "Add CAM Operation", add_operation).at("MANUFACTURE", "SETUP").icon("new").doc_only()
@@ -346,7 +348,7 @@ fn set_origin(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad(CMD, "give position, x_axis or z_axis"));
     }
     let origin = &mut s.doc_mut().cam.origin;
-    let mut next = WorkOrigin {
+    let next = WorkOrigin {
         position: r.position.unwrap_or(origin.position),
         x_axis: r.x_axis.unwrap_or(origin.x_axis),
         z_axis: r.z_axis.unwrap_or(origin.z_axis),
@@ -442,45 +444,64 @@ fn resolve_points(cmd: &str, request: &Sim) -> Result<(Vec<sim::ClPoint>, Vec<St
     }
 }
 
-fn simulate_toolpath(_s: &mut Session, p: &Value) -> Result<Value> {
-    const CMD: &str = "cam.simulate";
-    let request: Sim = serde_json::from_value(p.clone()).map_err(|e| bad(CMD, e.to_string()))?;
-    let (points, warnings) = resolve_points(CMD, &request)?;
-    let u = unit(CMD, request.unit.as_deref())?;
+/// The simulation of one request: the machined stock grid, the part target and the
+/// report. Shared by `cam.simulate` (which reports) and `cam.machine` (which models).
+struct SimRun {
+    warnings: Vec<String>,
+    stock: sim::ZMap,
+    part: sim::ZMap,
+    lo: [f64; 3],
+    hi: [f64; 3],
+    part_top: f64,
+    tolerance: f64,
+    report: sim::SimReport,
+}
+
+fn run_sim(cmd: &str, request: &Sim) -> Result<SimRun> {
+    let (points, warnings) = resolve_points(cmd, request)?;
+    let u = unit(cmd, request.unit.as_deref())?;
     let scale = match u {
         Unit::Mm => 1.0,
         Unit::Inch => 25.4,
     };
-    let family = parse_family(CMD, &request.family)?;
+    let family = parse_family(cmd, &request.family)?;
     let empty = json!({});
     let params_in = if request.params.is_null() { &empty } else { &request.params };
-    let params = parse_params(CMD, params_in, family, &u)?;
-    let profile = tooling::profile::of(family, &params).map_err(|e| bad(CMD, e.to_string()))?;
+    let params = parse_params(cmd, params_in, family, &u)?;
+    let profile = tooling::profile::of(family, &params).map_err(|e| bad(cmd, e.to_string()))?;
     let lo = request.stock.min;
     let hi = request.stock.max;
     if lo.iter().chain(hi.iter()).any(|v| !v.is_finite() || v.abs() > 1e6) || hi[0] <= lo[0] || hi[1] <= lo[1] || hi[2] <= lo[2] {
-        return Err(bad(CMD, "stock min/max must be finite with max above min"));
+        return Err(bad(cmd, "stock min/max must be finite with max above min"));
     }
     let (lo, hi) = ([lo[0] * scale, lo[1] * scale, lo[2] * scale], [hi[0] * scale, hi[1] * scale, hi[2] * scale]);
     let cell = match request.cell {
         Some(c) if c.is_finite() && c > 0.0 => c * scale,
         None => (((hi[0] - lo[0]).max(hi[1] - lo[1])) / 200.0).clamp(sim::MIN_CELL, 5.0),
-        _ => return Err(bad(CMD, "cell must be a positive number")),
+        _ => return Err(bad(cmd, "cell must be a positive number")),
     };
     let part_top = match request.part_top {
         Some(z) if z.is_finite() => z * scale,
-        Some(_) => return Err(bad(CMD, "part_top must be finite")),
+        Some(_) => return Err(bad(cmd, "part_top must be finite")),
         None => hi[2],
     };
     let tolerance = match request.tolerance {
         Some(t) if t.is_finite() && t >= 0.0 => t * scale,
-        Some(_) => return Err(bad(CMD, "tolerance must be a non-negative number")),
+        Some(_) => return Err(bad(cmd, "tolerance must be a non-negative number")),
         None => 0.05 * scale,
     };
-    let mut stock = sim::ZMap::flat((lo[0], lo[1]), (hi[0], hi[1]), hi[2], cell).map_err(|e| bad(CMD, e.to_string()))?;
-    let part = sim::ZMap::flat((lo[0], lo[1]), (hi[0], hi[1]), part_top, cell).map_err(|e| bad(CMD, e.to_string()))?;
+    let mut stock = sim::ZMap::flat((lo[0], lo[1]), (hi[0], hi[1]), hi[2], cell).map_err(|e| bad(cmd, e.to_string()))?;
+    let part = sim::ZMap::flat((lo[0], lo[1]), (hi[0], hi[1]), part_top, cell).map_err(|e| bad(cmd, e.to_string()))?;
     let opts = sim::SimOptions { gouge_tol: tolerance, step: 0.0 };
-    let report = sim::simulate(&profile, &points, &mut stock, &part, &opts).map_err(|e| bad(CMD, e.to_string()))?;
+    let report = sim::simulate(&profile, &points, &mut stock, &part, &opts).map_err(|e| bad(cmd, e.to_string()))?;
+    Ok(SimRun { warnings, stock, part, lo, hi, part_top, tolerance, report })
+}
+
+fn simulate_toolpath(_s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "cam.simulate";
+    let request: Sim = serde_json::from_value(p.clone()).map_err(|e| bad(CMD, e.to_string()))?;
+    let run = run_sim(CMD, &request)?;
+    let SimRun { warnings, stock, hi, part_top, report, .. } = run;
     let (cols, rows) = stock.shape();
     // The machined grid comes back so a viewer can draw it; a huge grid is left out.
     let stock_rows: Value =
@@ -496,11 +517,63 @@ fn simulate_toolpath(_s: &mut Session, p: &Value) -> Result<Value> {
         "samples": report.samples,
         "warnings": warnings,
         "grid": [cols, rows],
-        "origin": [lo[0], lo[1]],
+        "origin": [hi[0], hi[1]],
         "cell": stock.cell(),
         "stock_rows": stock_rows,
         "stock_top": hi[2],
         "part_top": part_top,
+    }))
+}
+
+#[derive(Deserialize)]
+struct Machine {
+    #[serde(flatten)]
+    sim: Sim,
+    /// Name for the finished component and body (the file's stem otherwise).
+    #[serde(default)]
+    body: Option<String>,
+}
+
+/// Machine a stock block by a toolpath and make the result a body of the design: the
+/// Z-map replay's finished surface is meshed, inserted as a mesh, and converted — the
+/// same path a scanned STL takes. This is how a G-code file with no model becomes one.
+fn machine_stock(s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "cam.machine";
+    let r: Machine = req(CMD, p)?;
+    let run = run_sim(CMD, &r.sim)?;
+    let mesh = sim::surface(&run.stock, &run.part, run.lo[2], run.tolerance.max(1e-4)).map_err(|e| bad(CMD, e.to_string()))?;
+    let name = r.body.clone().unwrap_or_else(|| match r.sim.file.as_deref() {
+        Some(f) => {
+            let stem = f.rsplit(['/', '\\']).next().unwrap_or(f);
+            stem.rsplit_once('.').map(|(s, _)| s).unwrap_or(stem).to_string()
+        }
+        None => "Machined".to_string(),
+    });
+    if name.is_empty() || name.len() > 120 {
+        return Err(bad(CMD, "body name must be between 1 and 120 bytes"));
+    }
+    let stl = solidcraft_io::stl_binary(&[mesh], &name);
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let tmp = solidcraft_io::vfs::temp_dir().join(format!("solidcraft-machine-{}-{}.stl", std::process::id(), SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+    let tmp = tmp.to_string_lossy().into_owned();
+    solidcraft_io::vfs::write(&tmp, &stl).map_err(|e| bad(CMD, format!("could not stage the machined surface: {e}")))?;
+    let before: Vec<String> = s.model.state().bodies.iter().map(|b| b.name.clone()).collect();
+    s.execute("file.insert_mesh", &json!({"path": tmp, "name": name})).map_err(|e| bad(CMD, format!("the machined surface could not be inserted: {e}")))?;
+    let new_body = s
+        .model
+        .state()
+        .bodies
+        .iter()
+        .map(|b| b.name.clone())
+        .find(|n| !before.contains(n))
+        .ok_or_else(|| bad(CMD, "the machined surface came in with no body"))?;
+    let out = s.execute("mesh.convert", &json!({"body": new_body})).map_err(|e| bad(CMD, format!("the machined surface could not be converted: {e}")))?;
+    Ok(json!({
+        "body": out.get("body").cloned().unwrap_or(json!(new_body)),
+        "removed_mm3": run.report.removed_mm3,
+        "gouges": run.report.gouge_count,
+        "collisions": run.report.collisions,
+        "warnings": run.warnings,
     }))
 }
 
