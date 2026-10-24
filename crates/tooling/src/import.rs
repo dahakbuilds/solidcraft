@@ -150,9 +150,9 @@ pub fn parse_gtc(text: &str, unit_inch: bool) -> ImportReport {
         }
         // Some posts omit the `TOOL,` marker; a repeated TOOL_TYPE or TOOL_NO opens the
         // next block, so a file that mixes markers still splits per tool.
-        let repeats = current.as_ref().is_some_and(|b| {
-            (key == "TOOL_TYPE" && b.fields.contains_key("TOOL_TYPE")) || (key == "TOOL_NO" && b.fields.contains_key("TOOL_NO"))
-        });
+        let repeats = current
+            .as_ref()
+            .is_some_and(|b| (key == "TOOL_TYPE" && b.fields.contains_key("TOOL_TYPE")) || (key == "TOOL_NO" && b.fields.contains_key("TOOL_NO")));
         if repeats {
             if let Some(block) = current.take() {
                 finish_block(block, &mut report);
