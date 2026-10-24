@@ -119,7 +119,7 @@ impl CamSimPanel {
         if w <= 0.0 || l <= 0.0 || w > sx || l > sy {
             return None;
         }
-        let step = (tool_d * (stepover / 100.0).clamp(1.0, 100.0) / 100.0).clamp(0.2, l);
+        let step = (tool_d * (stepover.clamp(1.0, 100.0) / 100.0)).clamp(0.2, l);
         let (x0, x1) = ((sx - w) / 2.0, (sx + w) / 2.0);
         let y0 = (sy - l) / 2.0;
         let mut pts: Vec<Value> = Vec::new();
