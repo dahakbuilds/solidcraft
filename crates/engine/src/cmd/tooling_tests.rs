@@ -219,7 +219,10 @@ fn assembly_composes_tool_and_holder() {
     let mut s = session();
     // er32_bt40: nose 30 mm below the girth, taper 55 mm above; stickout 60 from the tip.
     let out = s
-        .execute("tool.assembly", &json!({"family": "end_mill_flat", "params": flat_params(), "holder_type": "er32_bt40", "stickout": 60.0, "steps": 12}))
+        .execute(
+            "tool.assembly",
+            &json!({"family": "end_mill_flat", "params": flat_params(), "holder_type": "er32_bt40", "stickout": 60.0, "steps": 12}),
+        )
         .unwrap();
     assert_eq!(out["reach"].as_f64().unwrap(), 30.0);
     assert_eq!(out["overall_length"].as_f64().unwrap(), 115.0);
