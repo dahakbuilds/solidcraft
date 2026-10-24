@@ -324,6 +324,10 @@ fn color_for(role: &mesh::Role) -> Rgb {
 /// Draw the window when it is open. Called once per frame.
 pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
     let Some(mut d) = app.tooling.take() else { return };
+    if d.form.params.is_empty() {
+        // a fresh window shows a valid default tool, not an empty grid
+        d.reset_params();
+    }
     let closed = ui_kit::Window::new(egui::Id::new("sc_tool_library"), "library", tr_label("Tool Library")).cards(4.0).show_body(ctx, |ui| {
         let t = Tokens::get();
         ui.horizontal_wrapped(|ui| {
@@ -399,6 +403,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
             });
             ui.separator();
             ui.vertical(|ui| {
+                ui.set_width(360.0);
                 egui::Grid::new("sc_tool_form").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
                     ui.label("Label");
                     ui.add(egui::TextEdit::singleline(&mut d.form.label).desired_width(200.0));

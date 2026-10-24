@@ -50,6 +50,11 @@ pub fn revolve(profile: &CutterProfile, steps: usize) -> Result<Revolved> {
     for (i, seg) in profile.segments.iter().enumerate() {
         for p in sample(seg)? {
             if polyline.last().is_some_and(|last| (last.x - p.x).abs() < 1e-12 && (last.z - p.z).abs() < 1e-12) {
+                // The junction's band is the one above it, so it belongs to this segment: a
+                // collinear shank wall above a cutting wall must not keep the cutting role.
+                if let Some(last) = face_of.last_mut() {
+                    *last = i as u32;
+                }
                 continue;
             }
             polyline.push(p);
