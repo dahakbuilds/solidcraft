@@ -69,7 +69,9 @@ fn simulate_toolpath(_s: &mut Session, p: &Value) -> Result<Value> {
         Unit::Inch => 25.4,
     };
     let family = parse_family(CMD, &request.family)?;
-    let params = parse_params(CMD, &request.params, family, &u)?;
+    let empty = json!({});
+    let params_in = if request.params.is_null() { &empty } else { &request.params };
+    let params = parse_params(CMD, params_in, family, &u)?;
     let profile = tooling::profile::of(family, &params).map_err(|e| bad(CMD, e.to_string()))?;
     let lo = request.stock.min;
     let hi = request.stock.max;
