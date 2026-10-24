@@ -328,7 +328,7 @@ fn open(_s: &mut Session, p: &Value) -> Result<Value> {
         {
             return Err(bad(CMD, format!("could not create the tool library folder: {e}")));
         }
-        let library = ToolLibrary::new(default_id(), default_name()).map_err(|e| bad(CMD, e.to_string()))?;
+        let library = ToolLibrary::new(&default_id(), &default_name()).map_err(|e| bad(CMD, e.to_string()))?;
         if let Err(e) = write_library(CMD, &text, &library, false)
             && !solidcraft_io::vfs::exists(&text)
         {
