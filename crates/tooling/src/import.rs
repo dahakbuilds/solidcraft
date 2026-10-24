@@ -350,7 +350,7 @@ fn fill_params(family: Family, given: BTreeMap<String, f64>, unit_inch: bool) ->
 fn sanitise_label(text: &str) -> String {
     let cleaned: String = text.chars().filter(|c| !c.is_control()).take(200).collect();
     let cleaned = cleaned.trim();
-    match cleaned.as_bytes().len() {
+    match cleaned.len() {
         0..=128 => cleaned.to_string(),
         _ => {
             let mut cut = 128;
