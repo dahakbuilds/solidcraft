@@ -171,10 +171,12 @@ pub fn emit(post: &Post, path: &Toolpath, o: &EmitOptions) -> Result<String> {
     if !post.spindle.is_empty() && o.rpm > 0.0 {
         push(&post.spindle.replace("{rpm}", &num(o.rpm)))?;
     }
-    if let Some(tool) = &o.tool {
-        if !tool.is_empty() && tool.len() <= 64 && !tool.chars().any(char::is_control) {
-            push(&format!("({tool})"))?;
-        }
+    if let Some(tool) = &o.tool
+        && !tool.is_empty()
+        && tool.len() <= 64
+        && !tool.chars().any(char::is_control)
+    {
+        push(&format!("({tool})"))?;
     }
     let feed = num(o.feed);
     for seg in &path.segments {
