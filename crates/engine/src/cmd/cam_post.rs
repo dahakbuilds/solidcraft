@@ -46,6 +46,7 @@ fn list(_s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "cam.post.list";
     let folder = folder_arg(CMD, p)?;
     let _ = &folder;
+    #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
     let mut out: Vec<Value> = solidcraft_cam::builtin_posts()
         .into_iter()
         .map(|b| json!({"id": b.id, "name": b.name, "machine": b.machine, "builtin": true}))
@@ -111,7 +112,6 @@ fn save(_s: &mut Session, p: &Value) -> Result<Value> {
     }
     #[cfg(target_arch = "wasm32")]
     {
-        let _ = &r;
         Err(bad(CMD, "not supported yet: saving posts in the browser"))
     }
 }
