@@ -159,14 +159,10 @@ pub fn on_click(app: &mut SolveApp, tool: &mut Tool, proj: &Proj, pos: Pos2) -> 
                 // Same click order as the 2D tool: start, end, then a point on the arc.
                 let (a, e, t) = (c[0], c[1], c[2]);
                 let r = match (on_plane(app, a), on_plane(app, e), on_plane(app, t)) {
-                    (Some(qa), Some(qe), Some(qt)) if tool.cmd == "sketch.arc.three_point" => app.run(
-                        "sketch.arc.three_point",
-                        json!({"start": [qa.x, qa.y], "end": [qe.x, qe.y], "through": [qt.x, qt.y]}),
-                    ),
-                    _ => app.run(
-                        "sketch.arc3d",
-                        json!({"start": [a.x, a.y, a.z], "through": [t.x, t.y, t.z], "end": [e.x, e.y, e.z]}),
-                    ),
+                    (Some(qa), Some(qe), Some(qt)) if tool.cmd == "sketch.arc.three_point" => {
+                        app.run("sketch.arc.three_point", json!({"start": [qa.x, qa.y], "end": [qe.x, qe.y], "through": [qt.x, qt.y]}))
+                    }
+                    _ => app.run("sketch.arc3d", json!({"start": [a.x, a.y, a.z], "through": [t.x, t.y, t.z], "end": [e.x, e.y, e.z]})),
                 };
                 report(app, r);
                 c.clear();
