@@ -9,8 +9,7 @@ use serde::Serialize;
 use solidcraft_geom::{Mesh, Vec3};
 
 use crate::{
-    Result,
-    invalid,
+    Result, invalid,
     profile::{CutterProfile, Segment},
 };
 

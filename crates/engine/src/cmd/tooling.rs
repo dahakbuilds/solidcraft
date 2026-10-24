@@ -15,6 +15,8 @@ pub static COMMANDS: &[CommandSpec] = &[
         .params("no parameters; lists the milling tool families with their parameter schema"),
     CommandSpec::new("tool.profile", "Cutter Profile", profile).icon("inspect").noundo().doc_only()
         .params("family, params {…}, unit? mm|inch; the revolved cutter profile (segments from the tip upward, cutting flags) and derived lengths; reads no file"),
+    CommandSpec::new("tool.library.open", "Tool Library", open).icon("inspect").noundo().doc_only()
+        .params("path? (default: the user library in the data folder); opens the library file, creating it empty on first use; returns {path, library}; the toolbar opens the Tool Library window on this command"),
     CommandSpec::new("tool.library.create", "Create Tool Library", create).icon("export").noundo().doc_only()
         .params("path (.json); id? (default user.tools), name? (default My tools), overwrite? false"),
     CommandSpec::new("tool.library.inspect", "Inspect Tool Library", inspect).icon("inspect").noundo().doc_only()
@@ -286,6 +288,55 @@ fn profile(_s: &mut Session, p: &Value) -> Result<Value> {
     let params = parse_params(cmd, &request.params, family, &unit(cmd, request.unit.as_deref())?)?;
     let profile = tooling::profile::of(family, &params).map_err(|e| bad(cmd, e.to_string()))?;
     serde_json::to_value(profile).map_err(|e| bad(cmd, e.to_string()))
+}
+
+/// The default user tool library file: `<data_dir>/libraries/tools.solidcraft-tools.json`;
+/// in the browser build, the same name inside the virtual filesystem.
+fn default_path(cmd: &str) -> Result<std::path::PathBuf> {
+    #[cfg(not(target_arch = "wasm32"))]
+    let dir = crate::recovery::data_dir().ok_or_else(|| bad(cmd, "no per-user data folder is available"))?.join("libraries");
+    #[cfg(target_arch = "wasm32")]
+    let dir = std::path::PathBuf::from("libraries");
+    Ok(dir.join("tools.solidcraft-tools.json"))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Open {
+    #[serde(default)]
+    path: Option<String>,
+}
+
+fn open(_s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "tool.library.open";
+    let request: Open = serde_json::from_value(p.clone()).map_err(|e| bad(CMD, e.to_string()))?;
+    let text = match request.path {
+        Some(text) => {
+            path(CMD, &text)?;
+            if !text.to_ascii_lowercase().ends_with(".json") {
+                return Err(bad(CMD, "tool library path must end in .json"));
+            }
+            text
+        }
+        None => default_path(CMD)?.to_string_lossy().into_owned(),
+    };
+    let file = std::path::PathBuf::from(&text);
+    if !solidcraft_io::vfs::exists(&text) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(parent) = file.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            return Err(bad(CMD, format!("could not create the tool library folder: {e}")));
+        }
+        let library = ToolLibrary::new(default_id(), default_name()).map_err(|e| bad(CMD, e.to_string()))?;
+        if let Err(e) = write_library(CMD, &text, &library, false)
+            && !solidcraft_io::vfs::exists(&text)
+        {
+            return Err(e);
+        }
+    }
+    let library = read_library(CMD, &text)?;
+    Ok(json!({"path": text, "library": library}))
 }
 
 fn create(_s: &mut Session, p: &Value) -> Result<Value> {
