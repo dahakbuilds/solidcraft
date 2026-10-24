@@ -149,7 +149,23 @@ pub fn parse_gtc(text: &str, unit_inch: bool) -> ImportReport {
             continue;
         }
         if current.is_none() {
-            // Some posts omit the `TOOL,` marker; the first record opens the block.
+            // Some posts omit the `TOOL,` marker; a repeated TOOL_TYPE or TOOL_NO opens
+            // the next block, so a file that mixes markers still splits per tool.
+            let repeats = current.as_ref().is_some_and(|b| {
+                (key == "TOOL_TYPE" && b.fields.contains_key("TOOL_TYPE")) || (key == "TOOL_NO" && b.fields.contains_key("TOOL_NO"))
+            });
+            if repeats {
+                let block = current.take();
+                if let Some(block) = block {
+                    finish_block(block, &mut report);
+                }
+                if report.tools.len() + report.skipped.len() >= MAX_TOOLS {
+                    report.skipped.push(Skipped { what: "…".into(), why: format!("the file carries more than {MAX_TOOLS} tools") });
+                    break;
+                }
+            }
+        }
+        if current.is_none() {
             current = Some(Block { unit_inch: global_unit_inch, fields: BTreeMap::new() });
         }
         if let Some(block) = current.as_mut() {
@@ -403,8 +419,14 @@ fn json_tool(item: &Value) -> std::result::Result<ImportedTool, String> {
         Some(id) if !id.is_empty() => {
             let found = holder::find(id).ok_or_else(|| format!("unknown holder type `{id}`"))?;
             let stickout = match item.get("stickout").and_then(Value::as_f64) {
-                Some(s) if s.is_finite() && s > found.nose_len && s <= 500.0 => Some(if unit_inch { s * 25.4 } else { s }),
-                Some(_) => return Err("stickout must be greater than the holder nose length and at most 500 mm".into()),
+                Some(s) => {
+                    let mm = if unit_inch { s * 25.4 } else { s };
+                    if mm.is_finite() && mm > found.nose_len && mm <= 500.0 {
+                        Some(mm)
+                    } else {
+                        return Err("stickout must be greater than the holder nose length and at most 500 mm".into());
+                    }
+                }
                 None => Some((found.nose_len + 10.0).min(500.0)),
             };
             (Some(id.to_string()), stickout)
