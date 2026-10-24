@@ -238,6 +238,11 @@ fn build_gtc_tool(block: &Block) -> std::result::Result<ImportedTool, String> {
     let diameter = block.number("CUT_DIAMETER").or_else(|| block.number("DIAMETER")).or_else(|| block.field("TOOL_NO", 2));
     let type_key = block.text("TOOL_TYPE").map(normalise).unwrap_or_default();
     let (family, taper_default) = family_of(&type_key, corner, diameter)?;
+    // Posts write a plain `END` with a corner radius for a bull nose.
+    let (family, taper_default) = match (family, corner) {
+        (Family::EndMillFlat, c) if c > 0.0 => (Family::EndMillBull, taper_default),
+        _ => (family, taper_default),
+    };
     // A ball is often written as just its corner radius: the diameter is twice the corner.
     let diameter = diameter.or(match family {
         Family::EndMillBall if corner > 0.0 => Some(2.0 * corner),

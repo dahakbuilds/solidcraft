@@ -67,6 +67,14 @@ fn gtc_taper_types_carry_their_default_angle() {
 }
 
 #[test]
+fn gtc_end_with_a_corner_is_a_bull_nose() {
+    let report = parse_gtc("TOOL,\nTOOL_TYPE/END\nCUT_DIAMETER/12\nCORNER/1.5\n", false);
+    assert_eq!(report.tools.len(), 1, "{:?}", report.skipped);
+    assert_eq!(report.tools[0].family, Family::EndMillBull);
+    assert_eq!(report.tools[0].params["corner_radius"], 1.5);
+}
+
+#[test]
 fn gtc_infers_a_family_without_a_tool_type() {
     let report = parse_gtc("TOOL,\nNAME/plain rod\nCUT_DIAMETER/8\n", false);
     assert_eq!(report.tools.len(), 1, "{:?}", report.skipped);
