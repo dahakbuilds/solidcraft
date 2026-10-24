@@ -353,7 +353,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
             ui.vertical(|ui| {
                 ui.set_width(240.0);
                 ui.add(egui::TextEdit::singleline(&mut d.search).hint_text("Search tools").desired_width(230.0));
-                egui::ScrollArea::vertical().max_height(300.0).auto_shrink([false, false]).show(ui, |ui| {
+                egui::ScrollArea::vertical().max_height(220.0).auto_shrink([false, false]).show(ui, |ui| {
                     let rows = d.filtered();
                     if rows.is_empty() {
                         ui.label(RichText::new("no tools match").color(t.text_dim).italics());
@@ -392,15 +392,8 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                         d.form.vendor = vendor;
                         d.form.product_id = product;
                     }
-                    if d.selected.is_some() {
-                        let resp = ui_kit::button(ui, "Delete tool", ui_kit::Button::Normal);
-                        if resp.hovered() {
-                            eprintln!("tooling-debug: delete hovered, rect {:?}", resp.rect);
-                        }
-                        if resp.clicked() {
-                            eprintln!("tooling-debug: delete clicked");
-                            d.remove_selected(app);
-                        }
+                    if d.selected.is_some() && ui_kit::button(ui, "Delete tool", ui_kit::Button::Normal).clicked() {
+                        d.remove_selected(app);
                     }
                 });
             });
