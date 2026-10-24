@@ -9,11 +9,11 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use egui::{Color32, ColorImage, RichText, Sense, TextureHandle, Vec2};
+use egui::{Color32, ColorImage, Image, RichText, Sense, TextureHandle, Vec2};
 use serde_json::{Value, json};
 use solidcraft_engine::geom::Vec3;
 use solidcraft_engine::render::{Camera, Rgb, Scene, SceneMesh, render};
-use solidcraft_engine::tooling::{Assembly, Family, assembly, mesh, profile};
+use solidcraft_engine::tooling::{Family, assembly, mesh, profile};
 
 use crate::SolveApp;
 use crate::i18n::tr_label;
@@ -24,8 +24,9 @@ use crate::ui_kit;
 const GOLD: Rgb = Rgb(201, 162, 39);
 const SILVER: Rgb = Rgb(184, 188, 192);
 const GRAY: Rgb = Rgb(138, 143, 152);
-/// Preview resolution in logical points and the angular steps of the revolve.
-const PREVIEW_PT: f32 = 260.0;
+/// Preview resolution in logical points, the thumbnail edge, and the angular steps of the revolve.
+const PREVIEW_PT: f32 = 400.0;
+const THUMB_PT: f32 = 44.0;
 const REVOLVE_STEPS: usize = 48;
 
 /// One family as `tool.families` describes it.
@@ -72,6 +73,8 @@ pub struct ToolingPanel {
     error: Option<String>,
     cam: Camera,
     preview: Option<(TextureHandle, u64)>,
+    /// One mini preview per entry id (content-addressed, so it invalidates with the content).
+    thumbs: BTreeMap<String, TextureHandle>,
 }
 
 impl Default for ToolingPanel {
@@ -88,6 +91,7 @@ impl Default for ToolingPanel {
             error: None,
             cam: Camera { target: Vec3::new(0.0, 0.0, 25.0), distance: 150.0, ..Camera::default() },
             preview: None,
+            thumbs: BTreeMap::new(),
         }
     }
 }
@@ -143,6 +147,9 @@ impl ToolingPanel {
         self.selected = None;
         self.form = Form::default();
         self.adding = false;
+        // drop the mini previews of entries that are gone (ids are content-addressed)
+        let ids: Vec<String> = self.entries().iter().filter_map(|e| e["id"].as_str().map(str::to_string)).collect();
+        self.thumbs.retain(|k, _| ids.iter().any(|i| i == k));
     }
 
     fn entries(&self) -> Vec<Value> {
@@ -371,10 +378,9 @@ impl ToolingPanel {
         let params: BTreeMap<String, f64> =
             self.params_json().ok()?.as_object()?.iter().map(|(k, v)| (k.clone(), v.as_f64().unwrap_or_default())).collect();
         let profile = profile::of(family, &params).ok()?;
-        let (revolved, overall, radius) = match self.assembly_of(&profile, &params) {
-            Some(built) => (built.mesh, built.overall_length, built.max_radius),
-            None => (mesh::revolve(&profile, REVOLVE_STEPS).ok()?, profile.overall_length, profile.max_radius),
-        };
+        let holder_id = self.holders.get(self.form.holder.wrapping_sub(1)).map(|h| h.id.as_str());
+        let stickout: Option<f64> = self.form.stickout.trim().parse().ok().filter(|v: &f64| v.is_finite() && *v > 0.0);
+        let (revolved, overall, radius) = self.view_of(&profile, &params, holder_id, stickout, REVOLVE_STEPS)?;
         let t = Tokens::get();
         let mut scene = Scene { background: Some((rgb(t.viewport_top), rgb(t.viewport_bottom))), ..Default::default() };
         let face_colors: Vec<(u32, Rgb)> = revolved.face_roles.iter().enumerate().map(|(i, role)| (i as u32, color_for(role))).collect();
@@ -388,15 +394,42 @@ impl ToolingPanel {
         Some(ColorImage::from_rgba_unmultiplied([canvas.w, canvas.h], &canvas.rgba))
     }
 
-    /// The form's tool in its holder, when the form carries both; None means preview the bare tool.
-    fn assembly_of(&self, profile: &profile::CutterProfile, params: &BTreeMap<String, f64>) -> Option<Assembly> {
-        let holder = self.holders.get(self.form.holder.wrapping_sub(1))?;
-        let stickout: f64 = self.form.stickout.trim().parse().ok()?;
-        if !stickout.is_finite() || stickout <= 0.0 {
-            return None;
+    /// The mesh to draw for a profile: the holder assembly when one is given and composes,
+    /// otherwise the bare tool; with the overall length and radius that frame the camera.
+    fn view_of(
+        &self,
+        profile: &profile::CutterProfile,
+        params: &BTreeMap<String, f64>,
+        holder_id: Option<&str>,
+        stickout: Option<f64>,
+        steps: usize,
+    ) -> Option<(mesh::Revolved, f64, f64)> {
+        if let (Some(holder_id), Some(stickout)) = (holder_id, stickout) {
+            let bore = params.get("shank_diameter").copied().unwrap_or(0.0);
+            if let Ok(built) = assembly::compose(profile, holder_id, bore, stickout, steps) {
+                return Some((built.mesh, built.overall_length, built.max_radius));
+            }
         }
-        let bore = params.get("shank_diameter").copied().unwrap_or(0.0);
-        assembly::compose(profile, &holder.id, bore, stickout, REVOLVE_STEPS).ok()
+        let revolved = mesh::revolve(profile, steps).ok()?;
+        Some((revolved, profile.overall_length, profile.max_radius))
+    }
+
+    /// The mini preview for one library row, at a fixed three-quarter view.
+    fn thumbnail(&self, ctx: &egui::Context, entry: &Value) -> Option<ColorImage> {
+        let family = Family::parse(entry["family"].as_str()?)?;
+        let params: BTreeMap<String, f64> = entry["params"].as_object()?.iter().filter_map(|(k, v)| Some((k.clone(), v.as_f64()?))).collect();
+        let profile = profile::of(family, &params).ok()?;
+        let (revolved, overall, radius) = self.view_of(&profile, &params, entry["holder_type"].as_str(), entry["stickout"].as_f64(), 16)?;
+        let t = Tokens::get();
+        let mut scene = Scene { background: Some((rgb(t.viewport_top), rgb(t.viewport_bottom))), ..Default::default() };
+        let face_colors: Vec<(u32, Rgb)> = revolved.face_roles.iter().enumerate().map(|(i, role)| (i as u32, color_for(role))).collect();
+        scene.meshes.push(SceneMesh { mesh: Arc::new(revolved.mesh), color: SILVER, face_colors, opacity: 1.0 });
+        scene.radius = overall.max(radius * 4.0).max(1.0);
+        let cam = Camera { target: Vec3::new(0.0, 0.0, overall / 2.0), distance: (overall * 1.35).clamp(30.0, 4000.0), ..Camera::default() };
+        let ppp = ctx.pixels_per_point().clamp(1.0, 2.0);
+        let side = ((THUMB_PT * ppp) as usize).clamp(8, 1024);
+        let canvas = render(&scene, &cam, side, side);
+        Some(ColorImage::from_rgba_unmultiplied([canvas.w, canvas.h], &canvas.rgba))
     }
 }
 
@@ -420,7 +453,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
         // a fresh window shows a valid default tool, not an empty grid
         d.reset_params();
     }
-    let closed = ui_kit::Window::new(egui::Id::new("sc_tool_library"), "library", tr_label("Tool Library")).cards(4.0).show_body(ctx, |ui| {
+    let closed = ui_kit::Window::new(egui::Id::new("sc_tool_library"), "library", tr_label("Tool Library")).cards(4.5).show_body(ctx, |ui| {
         let t = Tokens::get();
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new(&d.path).color(t.text_dim).small());
@@ -447,9 +480,9 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
         ui.separator();
         ui.horizontal_top(|ui| {
             ui.vertical(|ui| {
-                ui.set_width(240.0);
-                ui.add(egui::TextEdit::singleline(&mut d.search).hint_text("Search tools").desired_width(230.0));
-                egui::ScrollArea::vertical().max_height(220.0).auto_shrink([false, false]).show(ui, |ui| {
+                ui.set_width(280.0);
+                ui.add(egui::TextEdit::singleline(&mut d.search).hint_text("Search tools").desired_width(270.0));
+                egui::ScrollArea::vertical().max_height(380.0).auto_shrink([false, false]).show(ui, |ui| {
                     let rows = d.filtered();
                     if rows.is_empty() {
                         ui.label(RichText::new("no tools match").color(t.text_dim).italics());
@@ -459,14 +492,27 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                         let label = entry["label"].as_str().unwrap_or_default().to_string();
                         let family_label = d.families.iter().find(|f| f.id == entry["family"].as_str().unwrap_or_default()).map(|f| f.label.clone());
                         let picked = d.selected.as_deref() == Some(id.as_str());
-                        if ui_kit::list_picker(ui, &id, &label, picked).clicked() {
-                            d.selected = Some(id.clone());
-                            d.adding = false;
-                            d.fill(&entry);
+                        if !d.thumbs.contains_key(&id)
+                            && let Some(image) = d.thumbnail(ui.ctx(), &entry)
+                        {
+                            let tex = ui.ctx().load_texture(format!("sc_tool_thumb_{}", id.replace('/', "_")), image, egui::TextureOptions::LINEAR);
+                            d.thumbs.insert(id.clone(), tex);
                         }
-                        if let Some(family_label) = family_label {
-                            ui.label(RichText::new(format!("    {family_label}")).color(t.text_dim).small());
-                        }
+                        ui.horizontal(|ui| {
+                            if let Some(tex) = d.thumbs.get(&id) {
+                                ui.add(Image::new((tex.id(), Vec2::splat(THUMB_PT))).sense(Sense::hover()));
+                            }
+                            ui.vertical(|ui| {
+                                if ui_kit::list_picker(ui, &id, &label, picked).clicked() {
+                                    d.selected = Some(id.clone());
+                                    d.adding = false;
+                                    d.fill(&entry);
+                                }
+                                if let Some(family_label) = family_label {
+                                    ui.label(RichText::new(format!("    {family_label}")).color(t.text_dim).small());
+                                }
+                            });
+                        });
                     }
                 });
                 ui.horizontal_wrapped(|ui| {
@@ -502,7 +548,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                 ui.set_width(380.0);
                 // cap the form height: with the holder rows the body would otherwise grow
                 // past the window frame and the Apply button below would lose its clicks
-                egui::ScrollArea::vertical().id_salt("sc_tool_form_scroll").max_height(240.0).show(ui, |ui| {
+                egui::ScrollArea::vertical().id_salt("sc_tool_form_scroll").max_height(400.0).show(ui, |ui| {
                     egui::Grid::new("sc_tool_form").num_columns(2).spacing([10.0, 4.0]).min_col_width(150.0).show(ui, |ui| {
                         ui.label("Label");
                         ui.add(egui::TextEdit::singleline(&mut d.form.label).desired_width(200.0));

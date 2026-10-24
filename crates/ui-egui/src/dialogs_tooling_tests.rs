@@ -47,6 +47,7 @@ fn the_window_adds_edits_and_deletes_a_tool() {
             d.entries().iter().map(|e| e["id"].as_str().unwrap_or("?").to_string()).collect::<Vec<_>>()
         );
         assert!(d.preview.is_some(), "the preview was drawn");
+        assert!(!d.thumbs.is_empty(), "the list rows got their mini previews");
         assert!(d.entries().iter().any(|e| e["label"] == "10 mm flat"));
     }
     {
