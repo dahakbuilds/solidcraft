@@ -67,6 +67,18 @@ fn gtc_taper_types_carry_their_default_angle() {
 }
 
 #[test]
+fn gtc_gives_the_diameter_to_the_parameter_the_family_cuts_with() {
+    let report = parse_gtc("TOOL,\nTOOL_TYPE/CHAMFER\nCUT_DIAMETER/10\nANGLE/90\n", false);
+    assert_eq!(report.tools.len(), 1, "{:?}", report.skipped);
+    assert_eq!(report.tools[0].params["cutting_diameter"], 10.0);
+    assert_eq!(report.tools[0].params["included_angle"], 90.0);
+    let report = parse_gtc("TOOL,\nTOOL_TYPE/TAP\nCUT_DIAMETER/8\nPITCH/1.25\n", false);
+    assert_eq!(report.tools.len(), 1, "{:?}", report.skipped);
+    assert_eq!(report.tools[0].params["major_diameter"], 8.0);
+    assert_eq!(report.tools[0].params["pitch"], 1.25);
+}
+
+#[test]
 fn gtc_end_with_a_corner_is_a_bull_nose() {
     let report = parse_gtc("TOOL,\nTOOL_TYPE/END\nCUT_DIAMETER/12\nCORNER/1.5\n", false);
     assert_eq!(report.tools.len(), 1, "{:?}", report.skipped);
