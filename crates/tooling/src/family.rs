@@ -30,7 +30,7 @@ const fn length(name: &'static str, min: f64, max: f64, doc: &'static str) -> Pa
     ParamSpec { name, min, max, default: None, unit: ParamUnit::Length, doc }
 }
 const fn length_opt(name: &'static str, min: f64, max: f64, default: f64, doc: &'static str) -> ParamSpec {
-    ParamSpec { name, min, max: max, default: Some(default), unit: ParamUnit::Length, doc }
+    ParamSpec { name, min, max, default: Some(default), unit: ParamUnit::Length, doc }
 }
 const fn angle(name: &'static str, min: f64, max: f64, default: f64, doc: &'static str) -> ParamSpec {
     ParamSpec { name, min, max, default: Some(default), unit: ParamUnit::Angle, doc }
