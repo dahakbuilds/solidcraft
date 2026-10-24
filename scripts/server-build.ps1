@@ -54,10 +54,13 @@ Invoke-Step "archive HEAD" "git -C '$repo' archive --format=tar --output '$tar' 
 Invoke-Step "scp tree to ${Server}" "scp -q '$tar' '${Server}:~/tree.tar'"
 Remove-Item $tar -ErrorAction SilentlyContinue
 
-# 2. Extract on the server (everything except target/ is replaced, so the tree
-#    matches HEAD exactly) and run the requested steps there.
+# 2. Extract on the server (everything except target/ and the stamp repo is
+#    replaced, so the tree matches HEAD exactly) and run the requested steps
+#    there. The tiny git repo gives crates/io's build script a stable commit to
+#    stamp; without one ("unknown") the model-cache tests refuse to trust saves.
 $remote = "cd ~ && mkdir -p $RemoteDir && cd $RemoteDir && " +
-    "find . -maxdepth 1 -mindepth 1 ! -name target -exec rm -rf {} + && tar -xf ~/tree.tar"
+    "find . -maxdepth 1 -mindepth 1 ! -name target ! -name .git -exec rm -rf {} + && tar -xf ~/tree.tar && " +
+    "[ -d .git ] || { git init -q . && git -c user.email=build@solidcraft.local -c user.name=server-build commit -q --allow-empty -m 'server-build sync'; }"
 $ssh = "ssh -o BatchMode=yes $Server"
 
 if ($Mode -in @("check", "all")) {
