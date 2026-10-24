@@ -2495,6 +2495,10 @@ pub struct Document {
     /// Plastic rules.
     #[serde(default, skip_serializing_if = "crate::plastic::PlasticSettings::is_empty")]
     pub plastic: crate::plastic::PlasticSettings,
+    /// CAM setup: operations with their tool, stock and toolpath, fixtures and the work
+    /// origin (the CAM tab). The machining math lives in `solidcraft-tooling`.
+    #[serde(default, skip_serializing_if = "solidcraft_cam::CamSetup::is_empty")]
+    pub cam: solidcraft_cam::CamSetup,
     /// Components that are standard parts (by component id): what to rebuild them from.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub parts: std::collections::BTreeMap<u64, StandardPart>,
@@ -2732,6 +2736,7 @@ impl Document {
             assembly: Default::default(),
             sheet: Default::default(),
             plastic: Default::default(),
+            cam: Default::default(),
             configs: Default::default(),
             parts: Default::default(),
             links: Default::default(),

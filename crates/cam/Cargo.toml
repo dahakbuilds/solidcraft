@@ -1,0 +1,17 @@
+[package]
+name = "solidcraft-cam"
+description = "SolidCraft CAM setup: operations with their tools, stock and 3D LINE/ARC toolpaths, fixtures and the work origin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+solidcraft-geom = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

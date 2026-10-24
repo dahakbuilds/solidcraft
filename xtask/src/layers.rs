@@ -45,6 +45,8 @@ pub const TABLE: &[(&str, Class)] = &[
     ("sketch", Class::Layer(1)),
     ("kernel", Class::Layer(1)),
     ("render", Class::Layer(1)),
+    // CAM setup data: operations, stock, fixtures, LINE/ARC toolpaths (geometry only)
+    ("cam", Class::Layer(1)),
     ("doc", Class::Layer(2)),
     ("io", Class::Layer(3)),
     // tool libraries: milling families, cutter profiles, library files (importers will need kernel)
