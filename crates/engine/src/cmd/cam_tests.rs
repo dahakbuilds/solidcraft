@@ -77,7 +77,11 @@ fn cam_simulate_refuses_hostile_requests() {
     assert!(s.execute("cam.simulate", &json!({"family": "end_mill_flat", "params": flat_params(), "path": [], "stock": stock, "cell": 1})).is_err());
     // non-finite coordinate
     assert!(
-        s.execute("cam.simulate", &json!({"family": "end_mill_flat", "params": flat_params(), "path": [[0, 0, 1], [null, 1, 1]], "stock": stock, "cell": 1})).is_err()
+        s.execute(
+            "cam.simulate",
+            &json!({"family": "end_mill_flat", "params": flat_params(), "path": [[0, 0, 1], [null, 1, 1]], "stock": stock, "cell": 1})
+        )
+        .is_err()
     );
     // a grid finer than the cell floor over the footprint
     assert!(
@@ -85,7 +89,13 @@ fn cam_simulate_refuses_hostile_requests() {
     );
     // unknown family and bad params
     assert!(s.execute("cam.simulate", &json!({"family": "nope", "params": {}, "path": [[0, 0, 1], [1, 1, 1]], "stock": stock, "cell": 1})).is_err());
-    assert!(s.execute("cam.simulate", &json!({"family": "end_mill_flat", "params": {"cutting_diameter": -3}, "path": [[0, 0, 1], [1, 1, 1]], "stock": stock, "cell": 1})).is_err());
+    assert!(
+        s.execute(
+            "cam.simulate",
+            &json!({"family": "end_mill_flat", "params": {"cutting_diameter": -3}, "path": [[0, 0, 1], [1, 1, 1]], "stock": stock, "cell": 1})
+        )
+        .is_err()
+    );
     // inverted stock
     assert!(s.execute("cam.simulate", &json!({"family": "end_mill_flat", "params": flat_params(), "path": [[0, 0, 1], [1, 1, 1]], "stock": {"min": [0, 0, 5], "max": [10, 10, 4]}, "cell": 1})).is_err());
 }

@@ -52,7 +52,9 @@ fn cl_point(cmd: &str, v: &Value, index: usize) -> Result<sim::ClPoint> {
         _ => return Err(bad(cmd, "path points are [x, y, z] or {x, y, z, cut?}")),
     };
     match (x, y, z) {
-        (Some(x), Some(y), Some(z)) => sim::ClPoint::new(x, y, z, index > 0 && cut).ok_or_else(|| bad(cmd, format!("path point {index} needs finite coordinates"))),
+        (Some(x), Some(y), Some(z)) => {
+            sim::ClPoint::new(x, y, z, index > 0 && cut).ok_or_else(|| bad(cmd, format!("path point {index} needs finite coordinates")))
+        }
         _ => Err(bad(cmd, format!("path point {index} needs finite numbers"))),
     }
 }
@@ -101,11 +103,8 @@ fn simulate_toolpath(_s: &mut Session, p: &Value) -> Result<Value> {
     let report = sim::simulate(&profile, &path, &mut stock, &part, &opts).map_err(|e| bad(CMD, e.to_string()))?;
     let (cols, rows) = stock.shape();
     // The machined grid comes back so a viewer can draw it; a huge grid is left out.
-    let stock_rows: Value = if cols * rows <= 100_000 {
-        Value::Array(stock.heights().chunks(cols).map(|row| json!(row)).collect())
-    } else {
-        Value::Null
-    };
+    let stock_rows: Value =
+        if cols * rows <= 100_000 { Value::Array(stock.heights().chunks(cols).map(|row| json!(row)).collect()) } else { Value::Null };
     Ok(json!({
         "removed_mm3": report.removed_mm3,
         "gouges": report.gouge_count,

@@ -148,7 +148,9 @@ impl CamSimPanel {
             self.error = Some(tr_label("Pick a tool first").to_string());
             return;
         };
-        let (Some(sx), Some(sy), Some(sz), Some(part_top)) = (number(&self.stock_x), number(&self.stock_y), number(&self.stock_z), number(&self.part_top)) else {
+        let (Some(sx), Some(sy), Some(sz), Some(part_top)) =
+            (number(&self.stock_x), number(&self.stock_y), number(&self.stock_z), number(&self.part_top))
+        else {
             self.error = Some(tr_label("Stock sizes and part top must be numbers").to_string());
             return;
         };
@@ -181,12 +183,9 @@ impl CamSimPanel {
     /// Rebuild the display mesh from the report's machined grid.
     fn build_mesh(&mut self) {
         let Some(r) = self.report.clone() else { return };
-        let (Some(rows), Some(origin), Some(cell), Some(part_top)) = (
-            r["stock_rows"].as_array(),
-            r["origin"].as_array(),
-            r["cell"].as_f64(),
-            r["part_top"].as_f64(),
-        ) else {
+        let (Some(rows), Some(origin), Some(cell), Some(part_top)) =
+            (r["stock_rows"].as_array(), r["origin"].as_array(), r["cell"].as_f64(), r["part_top"].as_f64())
+        else {
             return;
         };
         let grid: Vec<Vec<f64>> = rows.iter().filter_map(|row| row.as_array().map(|r| r.iter().filter_map(|v| v.as_f64()).collect())).collect();
@@ -247,9 +246,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                 ui.vertical(|ui| {
                     ui.set_width(ui.available_width() * 0.46);
                     ui.set_max_height(col_h);
-                    let names: Vec<String> = std::iter::once(tr_label("— no tool —"))
-                        .chain(d.entries.iter().map(|e| d.tool_label(e)))
-                        .collect();
+                    let names: Vec<String> = std::iter::once(tr_label("— no tool —")).chain(d.entries.iter().map(|e| d.tool_label(e))).collect();
                     let names_ref: Vec<&str> = names.iter().map(String::as_str).collect();
                     ui.label(RichText::new(tr_label("Tool")).color(t.text_dim).small());
                     ui_kit::dropdown(ui, "sc_camsim_tool", &mut d.tool, &names_ref);
@@ -298,13 +295,21 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                         let left = r["remaining_cells"].as_u64().unwrap_or(0);
                         let collisions = r["collisions"].as_u64().unwrap_or(0);
                         ui.label(RichText::new(format!("{} {:.0} mm³", tr_label("Removed"), mm3)).color(t.text));
-                        let gouge_text = if gouges == 0 { tr_label("No gouges").to_string() } else { format!("{gouges} {} ({worst:.2} mm)", tr_label("gouges")) };
+                        let gouge_text =
+                            if gouges == 0 { tr_label("No gouges").to_string() } else { format!("{gouges} {} ({worst:.2} mm)", tr_label("gouges")) };
                         ui.label(RichText::new(gouge_text).color(if gouges == 0 { t.accent } else { t.error }));
                         if collisions > 0 {
                             ui.label(RichText::new(format!("{collisions} {}", tr_label("rapid collisions"))).color(t.error));
                         }
                         if left > 0 {
-                            ui.label(RichText::new(format!("{left} {} ({:.2} mm)", tr_label("cells left above the part"), r["remaining_worst_mm"].as_f64().unwrap_or(0.0))).color(t.text_dim));
+                            ui.label(
+                                RichText::new(format!(
+                                    "{left} {} ({:.2} mm)",
+                                    tr_label("cells left above the part"),
+                                    r["remaining_worst_mm"].as_f64().unwrap_or(0.0)
+                                ))
+                                .color(t.text_dim),
+                            );
                         }
                     }
                 });

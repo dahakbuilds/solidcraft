@@ -12,10 +12,7 @@
 //! Everything is bounded — grid, path length and sample budget refuse hostile input
 //! before it can spend unbounded time or memory.
 
-use crate::{
-    Result, invalid,
-    profile::CutterProfile,
-};
+use crate::{Result, invalid, profile::CutterProfile};
 use solidcraft_geom::{Mesh, Vec3};
 
 /// Largest grid edge in cells.
@@ -67,7 +64,14 @@ impl ZMap {
             c if c.is_finite() => c.clamp(MIN_CELL, 50.0),
             _ => return Err(invalid("invalid Z-map cell size")),
         };
-        if !min.0.is_finite() || !min.1.is_finite() || !max.0.is_finite() || !max.1.is_finite() || !top.is_finite() || max.0 <= min.0 || max.1 <= min.1 {
+        if !min.0.is_finite()
+            || !min.1.is_finite()
+            || !max.0.is_finite()
+            || !max.1.is_finite()
+            || !top.is_finite()
+            || max.0 <= min.0
+            || max.1 <= min.1
+        {
             return Err(invalid("invalid Z-map bounds"));
         }
         let cols = (((max.0 - min.0) / cell).ceil() as usize).max(1);
@@ -85,7 +89,11 @@ impl ZMap {
         (self.cols, self.rows)
     }
     pub fn same_grid(&self, other: &Self) -> bool {
-        self.cols == other.cols && self.rows == other.rows && (self.x0 - other.x0).abs() < 1e-9 && (self.y0 - other.y0).abs() < 1e-9 && (self.cell - other.cell).abs() < 1e-12
+        self.cols == other.cols
+            && self.rows == other.rows
+            && (self.x0 - other.x0).abs() < 1e-9
+            && (self.y0 - other.y0).abs() < 1e-9
+            && (self.cell - other.cell).abs() < 1e-12
     }
     pub fn get(&self, i: usize, j: usize) -> f64 {
         self.data[j * self.cols + i]
@@ -221,7 +229,18 @@ pub fn simulate(profile: &CutterProfile, path: &[ClPoint], stock: &mut ZMap, par
 
 /// Lower the stock inside the cutter's radius to the cutting surface at `z`.
 #[allow(clippy::too_many_arguments)]
-fn cut_at(profile: &CutterProfile, stock: &mut ZMap, part: &ZMap, x: f64, y: f64, z: f64, max_r: f64, cell_area: f64, tol: f64, report: &mut SimReport) {
+fn cut_at(
+    profile: &CutterProfile,
+    stock: &mut ZMap,
+    part: &ZMap,
+    x: f64,
+    y: f64,
+    z: f64,
+    max_r: f64,
+    cell_area: f64,
+    tol: f64,
+    report: &mut SimReport,
+) {
     let (i0, i1, j0, j1) = footprint(stock, x, y, max_r);
     for j in j0..=j1 {
         for i in i0..=i1 {
@@ -335,12 +354,7 @@ pub fn surface(stock: &ZMap, part: &ZMap, bottom: f64, tol: f64) -> Result<Mesh>
     let lo = Vec3::new(stock.x0, stock.y0, bottom);
     let hi = Vec3::new(vx(cols), vy(rows), bottom);
     let corners = [lo, Vec3::new(hi.x, lo.y, bottom), hi, Vec3::new(lo.x, hi.y, bottom)];
-    let top_corners = [
-        mesh.positions[0],
-        mesh.positions[cols],
-        mesh.positions[rows * stride + cols],
-        mesh.positions[rows * stride],
-    ];
+    let top_corners = [mesh.positions[0], mesh.positions[cols], mesh.positions[rows * stride + cols], mesh.positions[rows * stride]];
     let centre = Vec3::new((lo.x + hi.x) / 2.0, (lo.y + hi.y) / 2.0, 0.0);
     for k in 0..4 {
         let (c0, c1) = (corners[k], corners[(k + 1) % 4]);
