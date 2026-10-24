@@ -4,7 +4,7 @@
 use solidcraft_engine::CommandSpec;
 use solidcraft_engine::doc::FeatureKind;
 
-pub const TABS: &[&str] = &["MODEL", "SURFACE", "ASSEMBLE", "INSERT", "INSPECT", "MANAGE", "VIEW"];
+pub const TABS: &[&str] = &["MODEL", "SURFACE", "ASSEMBLE", "INSERT", "CAM", "INSPECT", "MANAGE", "VIEW"];
 
 /// Reading order of the compact, three-column constraint gallery. Icons come from each spec.
 pub const CONSTRAINT_GALLERY: &[&str] = &[
@@ -147,6 +147,7 @@ pub const SECTIONS: &[Section] = &[
     Section { tab: "INSERT", panel: "2D", promoted: 2, ids: &["sketch.insert_dxf", "sketch.insert_svg"] },
     Section { tab: "INSERT", panel: "LIBRARY", promoted: 3, ids: &["parts.fastener", "parts.library", "parts.resize", "parts.insert"] },
     Section { tab: "INSERT", panel: "LINKS", promoted: 2, ids: &["component.update_links", "component.break_link"] },
+    Section { tab: "CAM", panel: "TOOLING", promoted: 1, ids: &["tool.library.open"] },
     Section { tab: "INSPECT", panel: "MEASURE", promoted: 3, ids: &["inspect.measure", "inspect.center_of_mass", "component.properties"] },
     Section { tab: "INSPECT", panel: "SECTION", promoted: 1, ids: &["inspect.section"] },
     Section {

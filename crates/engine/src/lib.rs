@@ -42,6 +42,7 @@ pub use solidcraft_io as io;
 pub use solidcraft_kernel as kernel;
 pub use solidcraft_render as render;
 pub use solidcraft_sketch as sketch;
+pub use solidcraft_tooling as tooling;
 
 /// Longest accepted request line on the JSON-lines channels (MCP over stdio and the control
 /// server over loopback), so both refuse runaway input at the same size.

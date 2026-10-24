@@ -175,3 +175,19 @@ fn identical_entries_are_refused_and_connections_record() {
     assert_eq!(seen["library"]["entries"][0]["machine_connection"]["standard"], "hsk-a");
     assert_eq!(seen["library"]["entries"][0]["work_connection"]["size"], "10");
 }
+
+#[test]
+fn open_creates_a_missing_library_and_reopens_it() {
+    let file = File::new();
+    let mut s = session();
+    let opened = s.execute("tool.library.open", &json!({"path": file.0})).unwrap();
+    assert_eq!(opened["path"], file.0);
+    assert_eq!(opened["library"]["entries"].as_array().unwrap().len(), 0);
+    add(&mut s, &file, json!({"vendor": "Testmaker"}));
+    let reopened = s.execute("tool.library.open", &json!({"path": file.0})).unwrap();
+    assert_eq!(reopened["library"]["entries"].as_array().unwrap().len(), 1);
+    assert_eq!(reopened["library"]["entries"][0]["vendor"], "Testmaker");
+    // the design is untouched
+    assert!(!s.is_dirty());
+    assert!(s.execute("tool.library.open", &json!({"path": "not-a-library.txt"})).is_err());
+}
