@@ -295,11 +295,7 @@ fn build_gtc_tool(block: &Block) -> std::result::Result<ImportedTool, String> {
 
     let mut vendor_properties = BTreeMap::new();
     for key in ["TOOL_TYPE", "TOOL_NO", "HOLDER", "SIDE_CUT_SPEED", "FEED", "MAX_SPEED"] {
-        let raw = block
-            .fields
-            .get(key)
-            .map(|f| f.iter().filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>().join(","))
-            .filter(|s| !s.is_empty());
+        let raw = block.fields.get(key).map(|f| f.iter().filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>().join(",")).filter(|s| !s.is_empty());
         if let Some(raw) = raw {
             vendor_properties.insert(format!("gtc.{}", key.to_ascii_lowercase()), raw);
         }
