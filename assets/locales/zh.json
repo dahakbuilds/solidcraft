@@ -963,6 +963,7 @@
   "cmd.tool_library_add": "将刀具添加到库",
   "cmd.tool_library_create": "创建刀具库",
   "cmd.tool_library_edit": "编辑刀具库条目",
+  "cmd.tool_library_import": "导入刀具",
   "cmd.tool_library_inspect": "检查刀具库",
   "cmd.tool_library_open": "刀具库",
   "cmd.tool_library_remove": "从库中移除刀具",

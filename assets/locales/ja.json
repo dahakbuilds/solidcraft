@@ -963,6 +963,7 @@
   "cmd.tool_library_add": "ライブラリにツールを追加",
   "cmd.tool_library_create": "ツールライブラリを作成",
   "cmd.tool_library_edit": "ツールライブラリの項目を編集",
+  "cmd.tool_library_import": "ツールをインポート",
   "cmd.tool_library_inspect": "ツールライブラリを確認",
   "cmd.tool_library_open": "ツールライブラリ",
   "cmd.tool_library_remove": "ライブラリからツールを削除",

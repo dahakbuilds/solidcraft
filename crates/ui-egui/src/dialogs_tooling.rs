@@ -74,6 +74,8 @@ pub struct ToolingPanel {
     form: Form,
     adding: bool,
     error: Option<String>,
+    /// A quiet success note (an import summary), shown where the error would go.
+    info: Option<String>,
     cam: Camera,
     preview: Option<(TextureHandle, u64)>,
     /// One mini preview per entry id (content-addressed, so it invalidates with the content).
@@ -92,6 +94,7 @@ impl Default for ToolingPanel {
             form: Form::default(),
             adding: false,
             error: None,
+            info: None,
             cam: Camera { target: Vec3::new(0.0, 0.0, 25.0), distance: 150.0, ..Camera::default() },
             preview: None,
             thumbs: BTreeMap::new(),
@@ -144,6 +147,7 @@ impl ToolingPanel {
                 self.path = v["path"].as_str().unwrap_or_default().to_string();
                 self.library = v["library"].clone();
                 self.error = None;
+                self.info = None;
             }
             Err(e) => self.error = Some(e.to_string()),
         }
@@ -474,6 +478,24 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                     }
                     #[cfg(not(target_arch = "wasm32"))]
                     {
+                        if ui_kit::button(ui, "Import…", ui_kit::Button::Normal).clicked() {
+                            app.pick_open_for(&["gtc", "p21", "tl", "tpt", "json"], |app, picked| {
+                                if let Some(picked) = picked
+                                    && let Some(mut d) = app.tooling.take()
+                                {
+                                    match app.session.execute("tool.library.import", &json!({"path": d.path.clone(), "file": picked})) {
+                                        Ok(v) => {
+                                            let n = v["imported"].as_u64().unwrap_or(0);
+                                            let m = v["skipped"].as_array().map_or(0, |a| a.len());
+                                            d.reload(app);
+                                            d.info = Some(format!("imported {n}, skipped {m}"));
+                                        }
+                                        Err(e) => d.error = Some(e.to_string()),
+                                    }
+                                    app.tooling = Some(d);
+                                }
+                            });
+                        }
                         if ui_kit::button(ui, "Open…", ui_kit::Button::Normal).clicked() {
                             app.pick_open(move |app, picked| {
                                 if let Some(picked) = picked
@@ -622,6 +644,8 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                         // inside the form column: a long message wraps here instead of growing
                         // the body past the window frame
                         ui.label(RichText::new(e).color(t.error));
+                    } else if let Some(m) = &d.info {
+                        ui.label(RichText::new(m).color(t.text_dim));
                     }
                 });
                 ui.separator();
