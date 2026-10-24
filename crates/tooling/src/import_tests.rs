@@ -126,14 +126,14 @@ fn json_reads_tools_in_both_shapes() {
     let report = parse_json(
         r#"[{"family": "end_mill_bull", "label": "bull 10", "params": {"cutting_diameter": 10, "corner_radius": 1}},
             {"family": "end_mill_flat", "label": "flat inch", "unit": "inch", "params": {"cutting_diameter": 0.5},
-             "holder_type": "er32_bt40", "stickout": 60, "vendor": "Acme"}]"#,
+             "holder_type": "er32_bt40", "stickout": 2.5, "vendor": "Acme"}]"#,
     )
     .unwrap();
     assert_eq!(report.tools.len(), 2, "{:?}", report.skipped);
     assert_eq!(report.tools[0].params["flute_length"], 20.0, "missing parameters take the family default");
     assert!((report.tools[1].params["cutting_diameter"] - 12.7).abs() < 1e-9);
     assert_eq!(report.tools[1].holder_type.as_deref(), Some("er32_bt40"));
-    assert_eq!(report.tools[1].stickout, Some(60.0));
+    assert_eq!(report.tools[1].stickout, Some(63.5), "the stickout arrives in the file's unit too");
     assert_eq!(report.tools[1].vendor.as_deref(), Some("Acme"));
     let wrapped = parse_json(r#"{"tools": [{"family": "drill", "label": "d", "params": {}}]}"#).unwrap();
     assert_eq!(wrapped.tools.len(), 1);
@@ -147,8 +147,9 @@ fn json_reports_bad_tools_as_skips_and_bad_files_as_errors() {
     assert!(report.skipped[0].why.contains("family"));
     assert!(parse_json("not json at all").is_err());
     assert!(parse_json(r#"{"unexpected": 1}"#).is_err());
-    let report = parse_json(r#"[{"family": "drill", "label": "x", "params": {"cutting_diameter": 1e400}}]"#).unwrap();
-    assert!(report.tools.is_empty() && report.skipped.len() == 1, "an infinite number is a skip, not a crash");
+    assert!(parse_json(r#"[{"family": "drill", "label": "x", "params": {"cutting_diameter": 1e400}}]"#).is_err(), "a number out of range fails the file");
+    let report = parse_json(r#"[{"family": "drill", "label": "x", "params": {"cutting_diameter": 1e39}}]"#).unwrap();
+    assert!(report.tools.is_empty() && report.skipped.len() == 1, "an absurd number is a skip, not a crash");
     let hostile: Vec<String> = (0..(MAX_TOOLS + 1)).map(|i| format!(r#"{{"family": "drill", "label": "t{i}", "params": {{}}}}"#)).collect();
     assert!(parse_json(&format!("[{}]", hostile.join(","))).is_err());
 }
