@@ -52,7 +52,7 @@ pub fn starter_pack(library_id: &str) -> Result<Vec<ToolEntry>> {
     let mut out = Vec::new();
     for (family, label, params) in PACK {
         let mut given = BTreeMap::new();
-        for (key, value) in *params {
+        for (key, value) in params.iter().copied() {
             given.insert(key.to_string(), value);
         }
         let params = fill_params(*family, given, false).map_err(invalid)?;
