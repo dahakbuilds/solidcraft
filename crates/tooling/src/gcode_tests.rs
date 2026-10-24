@@ -40,9 +40,12 @@ fn incremental_and_inch_units_scale_moves() {
 
 #[test]
 fn comments_and_blank_lines_are_skipped() {
+    // A parenthetical comment ends at its `)`: code after it on the same line still runs.
     let path = read("(hello)\n; bye\n\nG1 X1 Y1 ; feed\n(H) G0 X99\n").unwrap();
-    assert_eq!(path.points.len(), 1);
+    assert_eq!(path.points.len(), 2);
     assert_eq!(path.points[0].x, 1.0);
+    assert_eq!(path.points[1].x, 99.0);
+    assert!(!path.points[1].cut, "the modal rapid still holds");
 }
 
 #[test]
