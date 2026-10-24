@@ -67,19 +67,21 @@ fn the_window_adds_edits_and_deletes_a_tool() {
     let del_pos = h.widget("Delete tool");
     let apply_pos = h.widget("Apply");
     let add_pos = h.widget("Add");
+    let win = crate::scenario::rect_of("dialog:window");
     h.step(&json!({"widget": "Delete tool"})).unwrap();
     h.frames(2);
     {
         let d = h.app.tooling.as_ref().unwrap();
         assert!(
             d.entries().is_empty(),
-            "the tool is gone; error {:?}, selected {:?}, ids {:?}, del {:?}, apply {:?}, add {:?}",
+            "the tool is gone; error {:?}, selected {:?}, ids {:?}, del {:?}, apply {:?}, add {:?}, win {:?}",
             d.error,
             d.selected,
             d.entries().iter().map(|e| e["id"].as_str().unwrap_or("?").to_string()).collect::<Vec<_>>(),
             del_pos,
             apply_pos,
-            add_pos
+            add_pos,
+            win
         );
     }
     let _ = std::fs::remove_file(&path);
