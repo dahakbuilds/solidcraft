@@ -178,6 +178,12 @@ pub fn emit(post: &Post, path: &Toolpath, o: &EmitOptions) -> Result<String> {
     {
         push(&format!("({tool})"))?;
     }
+    // The program must start by getting the tool to the path's first point: the
+    // machine is wherever the last program left it.
+    if let Some(first) = path.segments.first() {
+        let f = first.from();
+        push(&format!("{} X{} Y{} Z{}", post.rapid, num(f[0]), num(f[1]), num(f[2])))?;
+    }
     let feed = num(o.feed);
     for seg in &path.segments {
         match *seg {
@@ -255,6 +261,7 @@ mod tests {
     fn emits_a_program() {
         let text = emit(&Post::default(), &path(), &EmitOptions::default()).unwrap();
         assert!(text.starts_with("(SolidCraft)\nG21\nG90\nM3 S8000\n"), "{text}");
+        assert!(text.contains("G0 X0 Y0 Z5\nG0 Z5\nG0 X10 Y0\n"), "the program starts at the path: {text}");
         assert!(text.contains("G0 Z5\nG0 X10 Y0\n"), "rapid clears Z first: {text}");
         assert!(text.contains("G1 X10 Y0 Z-1 F500"), "{text}");
         assert!(text.contains("G3 X20 Y4 I0 J2 F500"), "ccw arc in XY: {text}");

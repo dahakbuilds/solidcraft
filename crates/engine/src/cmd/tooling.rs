@@ -657,9 +657,8 @@ fn scan(_s: &mut Session, p: &Value) -> Result<Value> {
                             },
                         }
                     };
-                    if count == 0 {
-                        continue;
-                    }
+                    // A file that parses but holds no usable tools is still listed,
+                    // with zero, so the folder does not look broken.
                     found.push(json!({"path": fp.to_string_lossy(), "format": format, "tools": count}));
                 }
             }
