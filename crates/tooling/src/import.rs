@@ -255,10 +255,15 @@ fn build_gtc_tool(block: &Block) -> std::result::Result<ImportedTool, String> {
             given.insert(name.to_string(), v);
         }
     };
-    put("cutting_diameter", diameter);
-    put("major_diameter", diameter);
-    put("crossbar_diameter", diameter);
-    put("pilot_diameter", diameter);
+    // The file's one diameter means different things per family; give it only to the
+    // parameter the family actually cuts with.
+    let diameter_key = match family {
+        Family::Tap | Family::CenterDrill => "major_diameter",
+        Family::TSlot => "crossbar_diameter",
+        Family::Counterbore => "counterbore_diameter",
+        _ => "cutting_diameter",
+    };
+    put(diameter_key, diameter);
     put("corner_radius", block.number("CORNER"));
     put("flute_length", block.number("CUTDEPTH").or_else(|| block.number("FLUTE_LENGTH")).or_else(|| block.number("CUT_LENGTH")));
     put("thread_length", block.number("CUTDEPTH"));
