@@ -17,11 +17,7 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-use crate::{
-    Result, family,
-    family::Family,
-    holder, invalid,
-};
+use crate::{Result, family, family::Family, holder, invalid};
 
 /// Largest number of tools one import may produce.
 pub const MAX_TOOLS: usize = 1024;
@@ -291,17 +287,7 @@ fn build_gtc_tool(block: &Block) -> std::result::Result<ImportedTool, String> {
         }
     }
 
-    Ok(ImportedTool {
-        family,
-        label,
-        params,
-        holder_type,
-        stickout,
-        vendor: None,
-        product_id: None,
-        notes,
-        vendor_properties,
-    })
+    Ok(ImportedTool { family, label, params, holder_type, stickout, vendor: None, product_id: None, notes, vendor_properties })
 }
 
 /// Match a GTC `HOLDER` name against the catalogue: every part of a catalogue id
@@ -329,7 +315,11 @@ fn fill_params(family: Family, given: BTreeMap<String, f64>, unit_inch: bool) ->
     for spec in family.schema() {
         let value = match given.get(spec.name) {
             Some(v) => {
-                if spec.unit == family::ParamUnit::Length && unit_inch { *v * 25.4 } else { *v }
+                if spec.unit == family::ParamUnit::Length && unit_inch {
+                    *v * 25.4
+                } else {
+                    *v
+                }
             }
             None => match spec.default {
                 Some(d) => d,
