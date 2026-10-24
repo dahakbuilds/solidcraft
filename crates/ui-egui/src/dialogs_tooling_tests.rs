@@ -64,7 +64,7 @@ fn the_window_adds_edits_and_deletes_a_tool() {
         let labels: Vec<String> = d.entries().iter().map(|e| e["label"].as_str().unwrap_or_default().to_string()).collect();
         assert_eq!(labels, vec!["10 mm flat short".to_string()], "the old label is gone");
     }
-    h.step(&json!({"widget": "Delete"})).unwrap();
+    h.step(&json!({"widget": "Delete tool"})).unwrap();
     h.frames(2);
     {
         let d = h.app.tooling.as_ref().unwrap();

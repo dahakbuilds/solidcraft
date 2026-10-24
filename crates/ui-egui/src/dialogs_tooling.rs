@@ -392,7 +392,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                         d.form.vendor = vendor;
                         d.form.product_id = product;
                     }
-                    if d.selected.is_some() && ui_kit::button(ui, "Delete", ui_kit::Button::Normal).clicked() {
+                    if d.selected.is_some() && ui_kit::button(ui, "Delete tool", ui_kit::Button::Normal).clicked() {
                         d.remove_selected(app);
                     }
                 });
