@@ -55,12 +55,72 @@ const SPINDLES: &[Spindle] = &[
 ];
 
 const BODIES: &[Body] = &[
-    Body { id: "er25", label: "ER25 collet chuck", nose_r: 13.0, nut_r: 20.0, nut_h: 10.0, nose_len: 25.0, bore_min: 1.0, bore_max: 16.0, bore_sized: false },
-    Body { id: "er32", label: "ER32 collet chuck", nose_r: 16.5, nut_r: 25.0, nut_h: 12.0, nose_len: 30.0, bore_min: 3.0, bore_max: 20.0, bore_sized: false },
-    Body { id: "er40", label: "ER40 collet chuck", nose_r: 20.5, nut_r: 30.0, nut_h: 14.0, nose_len: 35.0, bore_min: 6.0, bore_max: 26.0, bore_sized: false },
-    Body { id: "weldon", label: "Set-screw holder", nose_r: 0.0, nut_r: 0.0, nut_h: 15.0, nose_len: 35.0, bore_min: 4.0, bore_max: 20.0, bore_sized: true },
-    Body { id: "shrink", label: "Shrink-fit holder", nose_r: 0.0, nut_r: 0.0, nut_h: 20.0, nose_len: 45.0, bore_min: 4.0, bore_max: 20.0, bore_sized: true },
-    Body { id: "hydraulic", label: "Hydraulic chuck", nose_r: 0.0, nut_r: 0.0, nut_h: 18.0, nose_len: 40.0, bore_min: 3.0, bore_max: 16.0, bore_sized: true },
+    Body {
+        id: "er25",
+        label: "ER25 collet chuck",
+        nose_r: 13.0,
+        nut_r: 20.0,
+        nut_h: 10.0,
+        nose_len: 25.0,
+        bore_min: 1.0,
+        bore_max: 16.0,
+        bore_sized: false,
+    },
+    Body {
+        id: "er32",
+        label: "ER32 collet chuck",
+        nose_r: 16.5,
+        nut_r: 25.0,
+        nut_h: 12.0,
+        nose_len: 30.0,
+        bore_min: 3.0,
+        bore_max: 20.0,
+        bore_sized: false,
+    },
+    Body {
+        id: "er40",
+        label: "ER40 collet chuck",
+        nose_r: 20.5,
+        nut_r: 30.0,
+        nut_h: 14.0,
+        nose_len: 35.0,
+        bore_min: 6.0,
+        bore_max: 26.0,
+        bore_sized: false,
+    },
+    Body {
+        id: "weldon",
+        label: "Set-screw holder",
+        nose_r: 0.0,
+        nut_r: 0.0,
+        nut_h: 15.0,
+        nose_len: 35.0,
+        bore_min: 4.0,
+        bore_max: 20.0,
+        bore_sized: true,
+    },
+    Body {
+        id: "shrink",
+        label: "Shrink-fit holder",
+        nose_r: 0.0,
+        nut_r: 0.0,
+        nut_h: 20.0,
+        nose_len: 45.0,
+        bore_min: 4.0,
+        bore_max: 20.0,
+        bore_sized: true,
+    },
+    Body {
+        id: "hydraulic",
+        label: "Hydraulic chuck",
+        nose_r: 0.0,
+        nut_r: 0.0,
+        nut_h: 18.0,
+        nose_len: 40.0,
+        bore_min: 3.0,
+        bore_max: 16.0,
+        bore_sized: true,
+    },
 ];
 
 /// Which bodies each spindle offers, in catalogue order.
@@ -124,11 +184,7 @@ pub fn find(id: &str) -> Option<HolderType> {
 
 /// The bore radii a body presents for a given shank diameter.
 fn body_radii(body: &Body, bore: f64) -> (f64, f64) {
-    if body.bore_sized {
-        ((bore + 4.0) / 2.0, (bore + 14.0) / 2.0)
-    } else {
-        (body.nose_r, body.nut_r)
-    }
+    if body.bore_sized { ((bore + 4.0) / 2.0, (bore + 14.0) / 2.0) } else { (body.nose_r, body.nut_r) }
 }
 
 /// The simplified revolved envelope of a holder gripping `bore` (the tool shank diameter).
@@ -163,12 +219,7 @@ pub fn profile_of(type_id: &str, bore: f64) -> Result<CutterProfile> {
     segs.push(Segment::line(taper_start, spindle.flange_t, taper_top, spindle.taper_len, false));
     segs.push(Segment::line(taper_top, spindle.taper_len, 0.0, spindle.taper_len, false));
     let max_radius = [nose_r, nut_r, flange_r, girth_r].into_iter().fold(0.0_f64, f64::max);
-    Ok(CutterProfile {
-        segments: segs,
-        cutting_length: 0.0,
-        overall_length: body.nose_len + spindle.taper_len,
-        max_radius,
-    })
+    Ok(CutterProfile { segments: segs, cutting_length: 0.0, overall_length: body.nose_len + spindle.taper_len, max_radius })
 }
 
 #[cfg(test)]

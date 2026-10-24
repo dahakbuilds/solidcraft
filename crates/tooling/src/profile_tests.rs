@@ -146,7 +146,14 @@ fn keyway_t_slot_corner_and_counterbore_build() {
     assert!(approx(prof.radius_at(1.0).unwrap(), 3.0));
     assert!(approx(prof.radius_at(10.0).unwrap(), 3.0));
 
-    let p = params(&[("pilot_diameter", 4.0), ("pilot_length", 5.0), ("counterbore_diameter", 9.0), ("counterbore_depth", 6.0), ("overall_length", 60.0), ("shank_diameter", 6.0)]);
+    let p = params(&[
+        ("pilot_diameter", 4.0),
+        ("pilot_length", 5.0),
+        ("counterbore_diameter", 9.0),
+        ("counterbore_depth", 6.0),
+        ("overall_length", 60.0),
+        ("shank_diameter", 6.0),
+    ]);
     let prof = of(Family::Counterbore, &p).unwrap();
     assert!(approx(prof.cutting_length, 11.0));
     assert!(approx(prof.radius_at(2.0).unwrap(), 2.0));

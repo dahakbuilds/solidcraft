@@ -235,7 +235,8 @@ fn assembly_composes_tool_and_holder() {
     assert!(roles.iter().any(|r| r == "holder"));
     // a stickout inside the holder nose is refused
     assert!(
-        s.execute("tool.assembly", &json!({"family": "end_mill_flat", "params": flat_params(), "holder_type": "er32_bt40", "stickout": 10.0})).is_err()
+        s.execute("tool.assembly", &json!({"family": "end_mill_flat", "params": flat_params(), "holder_type": "er32_bt40", "stickout": 10.0}))
+            .is_err()
     );
     // an unknown holder is refused
     assert!(
@@ -260,7 +261,16 @@ fn entries_carry_holder_and_stickout() {
     assert!(entry.get("holder_type").is_none());
     assert!(entry.get("stickout").is_none());
     // a stickout without a holder is refused
-    assert!(s.execute("tool.library.add", &json!({"path": file.0, "family": "end_mill_flat", "label": "x", "params": flat_params(), "stickout": 60.0})).is_err());
+    assert!(
+        s.execute("tool.library.add", &json!({"path": file.0, "family": "end_mill_flat", "label": "x", "params": flat_params(), "stickout": 60.0}))
+            .is_err()
+    );
     // a stickout inside the holder nose is refused
-    assert!(s.execute("tool.library.add", &json!({"path": file.0, "family": "end_mill_flat", "label": "x", "params": flat_params(), "holder_type": "er32_bt40", "stickout": 5.0})).is_err());
+    assert!(
+        s.execute(
+            "tool.library.add",
+            &json!({"path": file.0, "family": "end_mill_flat", "label": "x", "params": flat_params(), "holder_type": "er32_bt40", "stickout": 5.0})
+        )
+        .is_err()
+    );
 }

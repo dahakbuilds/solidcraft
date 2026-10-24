@@ -456,209 +456,212 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
         // a fresh window shows a valid default tool, not an empty grid
         d.reset_params();
     }
-    let closed = ui_kit::Window::new(egui::Id::new("sc_tool_library"), "library", tr_label("Tool Library"))
-        .cards(4.5)
-        .height(WINDOW_PT)
-        .show_body(ctx, |ui| {
-        let t = Tokens::get();
-        // The columns grow with the window: they take the body height the ui_kit window gives its
-        // scrollable body, minus the path row and the search/button/zoom rows, so the whole form
-        // fits without nested scrolling on a tall screen and still fits a short one.
-        let body_h = ctx.content_rect().height() - t.form_header_height - t.form_footer_height - t.space_24 * 2.0;
-        let col_h = (body_h - 96.0).clamp(170.0, 400.0);
-        let preview_side = (col_h - 30.0).clamp(140.0, PREVIEW_PT);
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(&d.path).color(t.text_dim).small());
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui_kit::button(ui, "Reload", ui_kit::Button::Normal).clicked() {
-                    d.reload(app);
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    if ui_kit::button(ui, "Open…", ui_kit::Button::Normal).clicked() {
-                        app.pick_open(move |app, picked| {
-                            if let Some(picked) = picked
-                                && let Some(mut d) = app.tooling.take()
-                            {
-                                d.path = picked;
-                                d.reload(app);
-                                app.tooling = Some(d);
-                            }
-                        });
+    let closed = ui_kit::Window::new(egui::Id::new("sc_tool_library"), "library", tr_label("Tool Library")).cards(4.5).height(WINDOW_PT).show_body(
+        ctx,
+        |ui| {
+            let t = Tokens::get();
+            // The columns grow with the window: they take the body height the ui_kit window gives its
+            // scrollable body, minus the path row and the search/button/zoom rows, so the whole form
+            // fits without nested scrolling on a tall screen and still fits a short one.
+            let body_h = ctx.content_rect().height() - t.form_header_height - t.form_footer_height - t.space_24 * 2.0;
+            let col_h = (body_h - 96.0).clamp(170.0, 400.0);
+            let preview_side = (col_h - 30.0).clamp(140.0, PREVIEW_PT);
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new(&d.path).color(t.text_dim).small());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui_kit::button(ui, "Reload", ui_kit::Button::Normal).clicked() {
+                        d.reload(app);
                     }
-                }
-            });
-        });
-        ui.separator();
-        ui.horizontal_top(|ui| {
-            ui.vertical(|ui| {
-                ui.set_width(280.0);
-                ui.add(egui::TextEdit::singleline(&mut d.search).hint_text("Search tools").desired_width(270.0));
-                egui::ScrollArea::vertical().max_height((col_h - 60.0).max(100.0)).auto_shrink([false, false]).show(ui, |ui| {
-                    let rows = d.filtered();
-                    if rows.is_empty() {
-                        ui.label(RichText::new("no tools match").color(t.text_dim).italics());
-                    }
-                    for entry in rows {
-                        let id = entry["id"].as_str().unwrap_or_default().to_string();
-                        let label = entry["label"].as_str().unwrap_or_default().to_string();
-                        let family_label = d.families.iter().find(|f| f.id == entry["family"].as_str().unwrap_or_default()).map(|f| f.label.clone());
-                        let picked = d.selected.as_deref() == Some(id.as_str());
-                        if !d.thumbs.contains_key(&id)
-                            && let Some(image) = d.thumbnail(ui.ctx(), &entry)
-                        {
-                            let tex = ui.ctx().load_texture(format!("sc_tool_thumb_{}", id.replace('/', "_")), image, egui::TextureOptions::LINEAR);
-                            d.thumbs.insert(id.clone(), tex);
-                        }
-                        ui.horizontal(|ui| {
-                            if let Some(tex) = d.thumbs.get(&id) {
-                                ui.add(Image::new((tex.id(), Vec2::splat(THUMB_PT))).sense(Sense::hover()));
-                            }
-                            ui.vertical(|ui| {
-                                if ui_kit::list_picker(ui, &id, &label, picked).clicked() {
-                                    d.selected = Some(id.clone());
-                                    d.adding = false;
-                                    d.fill(&entry);
-                                }
-                                if let Some(family_label) = family_label {
-                                    ui.label(RichText::new(format!("    {family_label}")).color(t.text_dim).small());
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        if ui_kit::button(ui, "Open…", ui_kit::Button::Normal).clicked() {
+                            app.pick_open(move |app, picked| {
+                                if let Some(picked) = picked
+                                    && let Some(mut d) = app.tooling.take()
+                                {
+                                    d.path = picked;
+                                    d.reload(app);
+                                    app.tooling = Some(d);
                                 }
                             });
-                        });
-                    }
-                });
-                ui.horizontal_wrapped(|ui| {
-                    if ui_kit::button(ui, "Add", ui_kit::Button::Normal).clicked() {
-                        d.start_add();
-                    }
-                    if ui_kit::button(ui, "Duplicate", ui_kit::Button::Normal).clicked() {
-                        let (label, family, params, vendor, product, holder, stickout) = (
-                            format!("{} copy", d.form.label),
-                            d.form.family,
-                            d.form.params.clone(),
-                            d.form.vendor.clone(),
-                            d.form.product_id.clone(),
-                            d.form.holder,
-                            d.form.stickout.clone(),
-                        );
-                        d.start_add();
-                        d.form.label = label;
-                        d.form.family = family;
-                        d.form.params = params;
-                        d.form.vendor = vendor;
-                        d.form.product_id = product;
-                        d.form.holder = holder;
-                        d.form.stickout = stickout;
-                    }
-                    if d.selected.is_some() && ui_kit::button(ui, "Delete tool", ui_kit::Button::Normal).clicked() {
-                        d.remove_selected(app);
+                        }
                     }
                 });
             });
             ui.separator();
-            ui.vertical(|ui| {
-                ui.set_width(380.0);
-                // cap the form height: with the holder rows the body would otherwise grow
-                // past the window frame and the Apply button below would lose its clicks
-                egui::ScrollArea::vertical().id_salt("sc_tool_form_scroll").max_height((col_h - 30.0).max(140.0)).show(ui, |ui| {
-                    egui::Grid::new("sc_tool_form").num_columns(2).spacing([10.0, 4.0]).min_col_width(150.0).show(ui, |ui| {
-                        ui.label("Label");
-                        ui.add(egui::TextEdit::singleline(&mut d.form.label).desired_width(200.0));
-                        ui.end_row();
-                        let names: Vec<String> = d.families.iter().map(|f| f.label.clone()).collect();
-                        let names: Vec<&str> = names.iter().map(String::as_str).collect();
-                        let before = d.form.family;
-                        ui.label("Family");
-                        egui::ComboBox::from_id_salt("sc_tool_family").selected_text(names.get(d.form.family).copied().unwrap_or("?")).show_ui(
-                            ui,
-                            |ui| {
-                                for (i, name) in names.iter().enumerate() {
-                                    ui.selectable_value(&mut d.form.family, i, *name);
-                                }
-                            },
-                        );
-                        ui.end_row();
-                        if d.form.family != before {
-                            d.reset_params();
+            ui.horizontal_top(|ui| {
+                ui.vertical(|ui| {
+                    ui.set_width(280.0);
+                    ui.add(egui::TextEdit::singleline(&mut d.search).hint_text("Search tools").desired_width(270.0));
+                    egui::ScrollArea::vertical().max_height((col_h - 60.0).max(100.0)).auto_shrink([false, false]).show(ui, |ui| {
+                        let rows = d.filtered();
+                        if rows.is_empty() {
+                            ui.label(RichText::new("no tools match").color(t.text_dim).italics());
                         }
-                        let specs: Vec<Value> = d.family().map(|f| f.params.clone()).unwrap_or_default();
-                        for (i, spec) in specs.iter().enumerate() {
-                            let name = spec["name"].as_str().unwrap_or_default();
-                            let unit = spec["unit"].as_str().unwrap_or("");
-                            let mut label = name.replace('_', " ");
-                            if !unit.is_empty() {
-                                label.push_str(&format!(" ({unit})"));
+                        for entry in rows {
+                            let id = entry["id"].as_str().unwrap_or_default().to_string();
+                            let label = entry["label"].as_str().unwrap_or_default().to_string();
+                            let family_label =
+                                d.families.iter().find(|f| f.id == entry["family"].as_str().unwrap_or_default()).map(|f| f.label.clone());
+                            let picked = d.selected.as_deref() == Some(id.as_str());
+                            if !d.thumbs.contains_key(&id)
+                                && let Some(image) = d.thumbnail(ui.ctx(), &entry)
+                            {
+                                let tex =
+                                    ui.ctx().load_texture(format!("sc_tool_thumb_{}", id.replace('/', "_")), image, egui::TextureOptions::LINEAR);
+                                d.thumbs.insert(id.clone(), tex);
                             }
-                            ui.label(capitalize(&label));
-                            if let Some(text) = d.form.params.get_mut(i) {
-                                ui.add(egui::TextEdit::singleline(text).desired_width(90.0));
-                            }
-                            ui.end_row();
-                        }
-                        ui.label("Vendor");
-                        ui.add(egui::TextEdit::singleline(&mut d.form.vendor).desired_width(200.0));
-                        ui.end_row();
-                        ui.label("Product code");
-                        ui.add(egui::TextEdit::singleline(&mut d.form.product_id).desired_width(200.0));
-                        ui.end_row();
-                        let holder_names: Vec<String> = std::iter::once("None".to_string()).chain(d.holders.iter().map(|h| h.label.clone())).collect();
-                        let holder_names: Vec<&str> = holder_names.iter().map(String::as_str).collect();
-                        let before_holder = d.form.holder;
-                        ui.label("Holder");
-                        egui::ComboBox::from_id_salt("sc_tool_holder")
-                            .selected_text(holder_names.get(d.form.holder).copied().unwrap_or("?"))
-                            .show_ui(ui, |ui| {
-                                for (i, name) in holder_names.iter().enumerate() {
-                                    ui.selectable_value(&mut d.form.holder, i, *name);
+                            ui.horizontal(|ui| {
+                                if let Some(tex) = d.thumbs.get(&id) {
+                                    ui.add(Image::new((tex.id(), Vec2::splat(THUMB_PT))).sense(Sense::hover()));
                                 }
+                                ui.vertical(|ui| {
+                                    if ui_kit::list_picker(ui, &id, &label, picked).clicked() {
+                                        d.selected = Some(id.clone());
+                                        d.adding = false;
+                                        d.fill(&entry);
+                                    }
+                                    if let Some(family_label) = family_label {
+                                        ui.label(RichText::new(format!("    {family_label}")).color(t.text_dim).small());
+                                    }
+                                });
                             });
-                        ui.end_row();
-                        if d.form.holder != before_holder {
-                            d.fit_assembly();
                         }
-                        if d.form.holder > 0 {
-                            ui.label("Stickout (mm)");
-                            ui.add(egui::TextEdit::singleline(&mut d.form.stickout).desired_width(90.0));
-                            ui.end_row();
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        if ui_kit::button(ui, "Add", ui_kit::Button::Normal).clicked() {
+                            d.start_add();
+                        }
+                        if ui_kit::button(ui, "Duplicate", ui_kit::Button::Normal).clicked() {
+                            let (label, family, params, vendor, product, holder, stickout) = (
+                                format!("{} copy", d.form.label),
+                                d.form.family,
+                                d.form.params.clone(),
+                                d.form.vendor.clone(),
+                                d.form.product_id.clone(),
+                                d.form.holder,
+                                d.form.stickout.clone(),
+                            );
+                            d.start_add();
+                            d.form.label = label;
+                            d.form.family = family;
+                            d.form.params = params;
+                            d.form.vendor = vendor;
+                            d.form.product_id = product;
+                            d.form.holder = holder;
+                            d.form.stickout = stickout;
+                        }
+                        if d.selected.is_some() && ui_kit::button(ui, "Delete tool", ui_kit::Button::Normal).clicked() {
+                            d.remove_selected(app);
                         }
                     });
                 });
-                ui.horizontal(|ui| {
-                    let label = if d.adding { "Add tool" } else { "Apply" };
-                    if ui_kit::button(ui, label, ui_kit::Button::Primary).clicked() {
-                        d.commit(app);
+                ui.separator();
+                ui.vertical(|ui| {
+                    ui.set_width(380.0);
+                    // cap the form height: with the holder rows the body would otherwise grow
+                    // past the window frame and the Apply button below would lose its clicks
+                    egui::ScrollArea::vertical().id_salt("sc_tool_form_scroll").max_height((col_h - 30.0).max(140.0)).show(ui, |ui| {
+                        egui::Grid::new("sc_tool_form").num_columns(2).spacing([10.0, 4.0]).min_col_width(150.0).show(ui, |ui| {
+                            ui.label("Label");
+                            ui.add(egui::TextEdit::singleline(&mut d.form.label).desired_width(200.0));
+                            ui.end_row();
+                            let names: Vec<String> = d.families.iter().map(|f| f.label.clone()).collect();
+                            let names: Vec<&str> = names.iter().map(String::as_str).collect();
+                            let before = d.form.family;
+                            ui.label("Family");
+                            egui::ComboBox::from_id_salt("sc_tool_family").selected_text(names.get(d.form.family).copied().unwrap_or("?")).show_ui(
+                                ui,
+                                |ui| {
+                                    for (i, name) in names.iter().enumerate() {
+                                        ui.selectable_value(&mut d.form.family, i, *name);
+                                    }
+                                },
+                            );
+                            ui.end_row();
+                            if d.form.family != before {
+                                d.reset_params();
+                            }
+                            let specs: Vec<Value> = d.family().map(|f| f.params.clone()).unwrap_or_default();
+                            for (i, spec) in specs.iter().enumerate() {
+                                let name = spec["name"].as_str().unwrap_or_default();
+                                let unit = spec["unit"].as_str().unwrap_or("");
+                                let mut label = name.replace('_', " ");
+                                if !unit.is_empty() {
+                                    label.push_str(&format!(" ({unit})"));
+                                }
+                                ui.label(capitalize(&label));
+                                if let Some(text) = d.form.params.get_mut(i) {
+                                    ui.add(egui::TextEdit::singleline(text).desired_width(90.0));
+                                }
+                                ui.end_row();
+                            }
+                            ui.label("Vendor");
+                            ui.add(egui::TextEdit::singleline(&mut d.form.vendor).desired_width(200.0));
+                            ui.end_row();
+                            ui.label("Product code");
+                            ui.add(egui::TextEdit::singleline(&mut d.form.product_id).desired_width(200.0));
+                            ui.end_row();
+                            let holder_names: Vec<String> =
+                                std::iter::once("None".to_string()).chain(d.holders.iter().map(|h| h.label.clone())).collect();
+                            let holder_names: Vec<&str> = holder_names.iter().map(String::as_str).collect();
+                            let before_holder = d.form.holder;
+                            ui.label("Holder");
+                            egui::ComboBox::from_id_salt("sc_tool_holder")
+                                .selected_text(holder_names.get(d.form.holder).copied().unwrap_or("?"))
+                                .show_ui(ui, |ui| {
+                                    for (i, name) in holder_names.iter().enumerate() {
+                                        ui.selectable_value(&mut d.form.holder, i, *name);
+                                    }
+                                });
+                            ui.end_row();
+                            if d.form.holder != before_holder {
+                                d.fit_assembly();
+                            }
+                            if d.form.holder > 0 {
+                                ui.label("Stickout (mm)");
+                                ui.add(egui::TextEdit::singleline(&mut d.form.stickout).desired_width(90.0));
+                                ui.end_row();
+                            }
+                        });
+                    });
+                    ui.horizontal(|ui| {
+                        let label = if d.adding { "Add tool" } else { "Apply" };
+                        if ui_kit::button(ui, label, ui_kit::Button::Primary).clicked() {
+                            d.commit(app);
+                        }
+                    });
+                    if let Some(e) = &d.error {
+                        // inside the form column: a long message wraps here instead of growing
+                        // the body past the window frame
+                        ui.label(RichText::new(e).color(t.error));
                     }
                 });
-                if let Some(e) = &d.error {
-                    // inside the form column: a long message wraps here instead of growing
-                    // the body past the window frame
-                    ui.label(RichText::new(e).color(t.error));
-                }
-            });
-            ui.separator();
-            ui.vertical(|ui| {
-                d.refresh_preview(ui.ctx());
-                let resp = ui.allocate_response(Vec2::splat(preview_side), Sense::drag());
-                if resp.dragged() {
-                    let dd = resp.drag_delta();
-                    d.cam.yaw += dd.x as f64 * 0.01;
-                    d.cam.pitch = (d.cam.pitch + dd.y as f64 * 0.01).clamp(-1.45, 1.45);
-                }
-                if let Some((tex, _)) = &d.preview {
-                    ui.painter().image(tex.id(), resp.rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
-                }
-                ui.horizontal(|ui| {
-                    if ui_kit::button(ui, "−", ui_kit::Button::Normal).clicked() {
-                        d.cam.distance = (d.cam.distance * 1.25).clamp(10.0, 4000.0);
+                ui.separator();
+                ui.vertical(|ui| {
+                    d.refresh_preview(ui.ctx());
+                    let resp = ui.allocate_response(Vec2::splat(preview_side), Sense::drag());
+                    if resp.dragged() {
+                        let dd = resp.drag_delta();
+                        d.cam.yaw += dd.x as f64 * 0.01;
+                        d.cam.pitch = (d.cam.pitch + dd.y as f64 * 0.01).clamp(-1.45, 1.45);
                     }
-                    if ui_kit::button(ui, "+", ui_kit::Button::Normal).clicked() {
-                        d.cam.distance = (d.cam.distance * 0.8).clamp(10.0, 4000.0);
+                    if let Some((tex, _)) = &d.preview {
+                        ui.painter().image(tex.id(), resp.rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
                     }
-                    ui.label(RichText::new("drag to turn").color(t.text_dim).small());
+                    ui.horizontal(|ui| {
+                        if ui_kit::button(ui, "−", ui_kit::Button::Normal).clicked() {
+                            d.cam.distance = (d.cam.distance * 1.25).clamp(10.0, 4000.0);
+                        }
+                        if ui_kit::button(ui, "+", ui_kit::Button::Normal).clicked() {
+                            d.cam.distance = (d.cam.distance * 0.8).clamp(10.0, 4000.0);
+                        }
+                        ui.label(RichText::new("drag to turn").color(t.text_dim).small());
+                    });
                 });
             });
-        });
-    });
+        },
+    );
     if !closed {
         app.tooling = Some(d);
     }
