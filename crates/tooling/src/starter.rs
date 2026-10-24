@@ -5,12 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::{
-    ItemKind, Provenance, Result, ToolEntry,
-    family::Family,
-    import::fill_params,
-    invalid,
-};
+use crate::{ItemKind, Provenance, Result, ToolEntry, family::Family, import::fill_params, invalid};
 
 fn provenance() -> Provenance {
     Provenance { license: "CC0-1.0".into(), author: Some("SolidCraft starter pack".into()), source_url: None }
@@ -24,11 +19,7 @@ const PACK: &[(Family, &str, &[(&str, f64)])] = &[
         "10 mm flat end mill",
         &[("cutting_diameter", 10.0), ("flute_length", 20.0), ("overall_length", 70.0), ("shank_diameter", 10.0)],
     ),
-    (
-        Family::EndMillBall,
-        "6 mm ball nose",
-        &[("cutting_diameter", 6.0), ("flute_length", 15.0), ("overall_length", 50.0), ("shank_diameter", 6.0)],
-    ),
+    (Family::EndMillBall, "6 mm ball nose", &[("cutting_diameter", 6.0), ("flute_length", 15.0), ("overall_length", 50.0), ("shank_diameter", 6.0)]),
     (
         Family::EndMillBull,
         "12 mm bull nose R1.5",
