@@ -88,11 +88,12 @@ pub fn revolve_with(profile: &CutterProfile, steps: usize, non_cutting: Role) ->
         for k in 0..steps {
             let (a0, a1) = (std::f64::consts::TAU * (k as f64) / (steps as f64), std::f64::consts::TAU * ((k + 1) as f64) / (steps as f64));
             let (n0, n1) = (normal(a0), normal(a1));
-            // A corner on the axis collapses the quad to a triangle (a cone tip or apex ring).
+            // A corner on the axis collapses to that point on the axis (a cone tip or apex
+            // ring); the height is the profile point's own z, which is not 0 for holder noses.
             let corners: Vec<(Vec3, Vec3)> = match (p0.x <= AXIS_EPS, p1.x <= AXIS_EPS) {
                 (false, false) => vec![(ring(p0, a0), n0), (ring(p0, a1), n1), (ring(p1, a1), n1), (ring(p1, a0), n0)],
-                (true, false) => vec![(Vec3::ZERO, n0), (ring(p1, a1), n1), (ring(p1, a0), n0)],
-                (false, true) => vec![(ring(p0, a0), n0), (ring(p0, a1), n1), (Vec3::ZERO, n1)],
+                (true, false) => vec![(Vec3::new(0.0, 0.0, p0.z), n0), (ring(p1, a1), n1), (ring(p1, a0), n0)],
+                (false, true) => vec![(ring(p0, a0), n0), (ring(p0, a1), n1), (Vec3::new(0.0, 0.0, p1.z), n1)],
                 _ => vec![],
             };
             let base = mesh.positions.len() as u32;
