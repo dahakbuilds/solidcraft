@@ -34,7 +34,7 @@ struct ConnReq {
     size: String,
 }
 impl ConnReq {
-    fn into_conn(&self) -> tooling::Connection {
+    fn to_conn(&self) -> tooling::Connection {
         tooling::Connection { standard: self.standard.clone(), size: self.size.clone() }
     }
 }
@@ -330,10 +330,10 @@ fn apply_fields(cmd: &str, entry: &mut ToolEntry, fields: &Fields) -> Result<()>
         entry.product_url = fields.product_url.cloned();
     }
     if fields.machine_connection.is_some() {
-        entry.machine_connection = fields.machine_connection.map(ConnReq::into_conn);
+        entry.machine_connection = fields.machine_connection.map(ConnReq::to_conn);
     }
     if fields.work_connection.is_some() {
-        entry.work_connection = fields.work_connection.map(ConnReq::into_conn);
+        entry.work_connection = fields.work_connection.map(ConnReq::to_conn);
     }
     if fields.notes.is_some() {
         entry.notes = fields.notes.cloned();
