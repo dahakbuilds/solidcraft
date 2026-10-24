@@ -147,7 +147,10 @@ fn json_reports_bad_tools_as_skips_and_bad_files_as_errors() {
     assert!(report.skipped[0].why.contains("family"));
     assert!(parse_json("not json at all").is_err());
     assert!(parse_json(r#"{"unexpected": 1}"#).is_err());
-    assert!(parse_json(r#"[{"family": "drill", "label": "x", "params": {"cutting_diameter": 1e400}}]"#).is_err(), "a number out of range fails the file");
+    assert!(
+        parse_json(r#"[{"family": "drill", "label": "x", "params": {"cutting_diameter": 1e400}}]"#).is_err(),
+        "a number out of range fails the file"
+    );
     let report = parse_json(r#"[{"family": "drill", "label": "x", "params": {"cutting_diameter": 1e39}}]"#).unwrap();
     assert!(report.tools.is_empty() && report.skipped.len() == 1, "an absurd number is a skip, not a crash");
     let hostile: Vec<String> = (0..(MAX_TOOLS + 1)).map(|i| format!(r#"{{"family": "drill", "label": "t{i}", "params": {{}}}}"#)).collect();
