@@ -148,21 +148,18 @@ pub fn parse_gtc(text: &str, unit_inch: bool) -> ImportReport {
             current = Some(block);
             continue;
         }
-        if current.is_none() {
-            // Some posts omit the `TOOL,` marker; a repeated TOOL_TYPE or TOOL_NO opens
-            // the next block, so a file that mixes markers still splits per tool.
-            let repeats = current.as_ref().is_some_and(|b| {
-                (key == "TOOL_TYPE" && b.fields.contains_key("TOOL_TYPE")) || (key == "TOOL_NO" && b.fields.contains_key("TOOL_NO"))
-            });
-            if repeats {
-                let block = current.take();
-                if let Some(block) = block {
-                    finish_block(block, &mut report);
-                }
-                if report.tools.len() + report.skipped.len() >= MAX_TOOLS {
-                    report.skipped.push(Skipped { what: "…".into(), why: format!("the file carries more than {MAX_TOOLS} tools") });
-                    break;
-                }
+        // Some posts omit the `TOOL,` marker; a repeated TOOL_TYPE or TOOL_NO opens the
+        // next block, so a file that mixes markers still splits per tool.
+        let repeats = current.as_ref().is_some_and(|b| {
+            (key == "TOOL_TYPE" && b.fields.contains_key("TOOL_TYPE")) || (key == "TOOL_NO" && b.fields.contains_key("TOOL_NO"))
+        });
+        if repeats {
+            if let Some(block) = current.take() {
+                finish_block(block, &mut report);
+            }
+            if report.tools.len() + report.skipped.len() >= MAX_TOOLS {
+                report.skipped.push(Skipped { what: "…".into(), why: format!("the file carries more than {MAX_TOOLS} tools") });
+                break;
             }
         }
         if current.is_none() {
