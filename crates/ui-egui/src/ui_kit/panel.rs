@@ -511,6 +511,7 @@ impl<'a> Window<'a> {
                 if self.body_padding {
                     let height =
                         (dimension(ui.ctx().content_rect().height()) - t.form_header_height - t.form_footer_height - t.space_24 * 2.0).max(0.0);
+                    eprintln!("DBG panel body height cap {height} content_rect {:?}", ui.ctx().content_rect());
                     egui::ScrollArea::vertical()
                         .id_salt("window_body")
                         .max_height(height)

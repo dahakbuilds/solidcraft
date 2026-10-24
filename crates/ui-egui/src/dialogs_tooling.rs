@@ -455,12 +455,13 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
     }
     let closed = ui_kit::Window::new(egui::Id::new("sc_tool_library"), "library", tr_label("Tool Library")).cards(4.5).show_body(ctx, |ui| {
         let t = Tokens::get();
-        // Grow with the window: the columns take the body height the ui_kit window allows its
-        // scrollable body, minus the path row, the search/button rows and the zoom row, so the
-        // whole form fits without nested scrolling on a tall screen and still fits a short one.
-        let body_h = ctx.content_rect().height() - t.form_header_height - t.form_footer_height - t.space_24 * 2.0;
+        // Grow with the window: the columns take the height the window body actually has. The
+        // body scroll caps itself at half the viewport, so measure the frame we were given and
+        // size the columns to fit inside it — the form then never spills past the window edge.
+        let body_h = 400.0f32;
         let col_h = (body_h - 96.0).clamp(170.0, 400.0);
         let preview_side = (col_h - 30.0).clamp(140.0, PREVIEW_PT);
+        eprintln!("DBG prev window rect: {:?} body_h={body_h} col_h={col_h} preview_side={preview_side}", crate::scenario::rect_of("dialog:window"));
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new(&d.path).color(t.text_dim).small());
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -619,7 +620,9 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                 });
                 ui.horizontal(|ui| {
                     let label = if d.adding { "Add tool" } else { "Apply" };
-                    if ui_kit::button(ui, label, ui_kit::Button::Primary).clicked() {
+                    let resp = ui_kit::button(ui, label, ui_kit::Button::Primary);
+                    eprintln!("DBG addtool resp bottom {:?}", resp.rect);
+                    if resp.clicked() {
                         d.commit(app);
                     }
                 });
@@ -652,6 +655,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                 });
             });
         });
+        eprintln!("DBG body max_rect bottom: {:?}", ui.max_rect());
     });
     if !closed {
         app.tooling = Some(d);
