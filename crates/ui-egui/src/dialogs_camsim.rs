@@ -25,7 +25,6 @@ const GOUGE_RED: Rgb = Rgb(204, 68, 58);
 const BLANK: Rgb = Rgb(104, 110, 120);
 
 /// Everything the window remembers between frames.
-#[derive(Clone, Debug)]
 pub struct CamSimPanel {
     /// The library entries the tool picker lists.
     entries: Vec<Value>,
@@ -228,8 +227,9 @@ impl CamSimPanel {
     }
 }
 
-fn rgb(c: [u8; 3]) -> Rgb {
-    Rgb(c[0], c[1], c[2])
+fn rgb(c: Color32) -> Rgb {
+    let [r, g, b, _] = c.to_array();
+    Rgb(r, g, b)
 }
 
 /// Draw the window when it is open. Called once per frame.
@@ -246,7 +246,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                 ui.vertical(|ui| {
                     ui.set_width(ui.available_width() * 0.46);
                     ui.set_max_height(col_h);
-                    let names: Vec<String> = std::iter::once(tr_label("— no tool —")).chain(d.entries.iter().map(|e| d.tool_label(e))).collect();
+                    let names: Vec<String> = std::iter::once(tr_label("— no tool —").to_string()).chain(d.entries.iter().map(|e| d.tool_label(e))).collect();
                     let names_ref: Vec<&str> = names.iter().map(String::as_str).collect();
                     ui.label(RichText::new(tr_label("Tool")).color(t.text_dim).small());
                     ui_kit::dropdown(ui, "sc_camsim_tool", &mut d.tool, &names_ref);
