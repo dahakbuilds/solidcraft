@@ -24,10 +24,11 @@ fn assembly_stacks_tool_below_holder() {
     let holder_faces: Vec<usize> = a.mesh.face_roles.iter().enumerate().filter(|(_, r)| **r == Role::Holder).map(|(i, _)| i).collect();
     assert!(!holder_faces.is_empty());
     for (ti, tri) in a.mesh.mesh.triangles.iter().enumerate() {
-        let role = a.mesh.face_roles[a.mesh.mesh.tri_face[ti] as usize];
+        let face = a.mesh.mesh.tri_face[ti] as usize;
+        let role = a.mesh.face_roles[face];
         if role == Role::Holder {
             let z = a.mesh.mesh.positions[tri[0] as usize].z;
-            assert!(z >= 60.0 - 30.0 - 1e-9, "holder face dipped below the nose");
+            assert!(z >= 60.0 - 30.0 - 1e-9, "holder face dipped below the nose: z {z} face {face} tri {tri:?}");
         }
     }
     // the tool's cutting faces still start at the tip
