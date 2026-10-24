@@ -4,7 +4,7 @@
 use solidcraft_engine::CommandSpec;
 use solidcraft_engine::doc::FeatureKind;
 
-pub const TABS: &[&str] = &["MODEL", "SURFACE", "ASSEMBLE", "INSERT", "CAM", "INSPECT", "MANAGE", "VIEW"];
+pub const TABS: &[&str] = &["MODEL", "SURFACE", "ASSEMBLE", "INSERT", "INSPECT", "MANAGE", "VIEW"];
 
 /// Reading order of the compact, three-column constraint gallery. Icons come from each spec.
 pub const CONSTRAINT_GALLERY: &[&str] = &[
@@ -147,9 +147,9 @@ pub const SECTIONS: &[Section] = &[
     Section { tab: "INSERT", panel: "2D", promoted: 2, ids: &["sketch.insert_dxf", "sketch.insert_svg"] },
     Section { tab: "INSERT", panel: "LIBRARY", promoted: 3, ids: &["parts.fastener", "parts.library", "parts.resize", "parts.insert"] },
     Section { tab: "INSERT", panel: "LINKS", promoted: 2, ids: &["component.update_links", "component.break_link"] },
-    Section { tab: "CAM", panel: "SETUP", promoted: 3, ids: &["cam.operation.add", "cam.stock.set", "cam.toolpath.load"] },
-    Section { tab: "CAM", panel: "TOOLING", promoted: 1, ids: &["tool.library.open"] },
-    Section { tab: "CAM", panel: "SIMULATE", promoted: 1, ids: &["cam.simulate"] },
+    Section { tab: "MANUFACTURE", panel: "SETUP", promoted: 3, ids: &["cam.operation.add", "cam.stock.set", "cam.toolpath.load"] },
+    Section { tab: "MANUFACTURE", panel: "TOOLING", promoted: 1, ids: &["tool.library.open"] },
+    Section { tab: "MANUFACTURE", panel: "SIMULATE", promoted: 1, ids: &["cam.simulate"] },
     Section { tab: "INSPECT", panel: "MEASURE", promoted: 3, ids: &["inspect.measure", "inspect.center_of_mass", "component.properties"] },
     Section { tab: "INSPECT", panel: "SECTION", promoted: 1, ids: &["inspect.section"] },
     Section {
@@ -458,6 +458,11 @@ pub fn visible_tabs(app: &crate::SolveApp) -> Vec<&'static str> {
     let mut tabs = TABS.to_vec();
     if app.session.active_sketch.is_some() {
         tabs.push("SKETCH");
+    }
+    // The Manufacture tab rides the browser's CAM tab: it appears when the CAM tree
+    // is up, and steps away with it.
+    if app.tree.cam_tab {
+        tabs.insert(tabs.len().min(4), "MANUFACTURE");
     }
     // Always reachable, as before the ribbon redesign: a sheet-metal part starts from an
     // ordinary sketch or solid, so the tab cannot wait for a sheet body.

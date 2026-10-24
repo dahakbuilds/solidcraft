@@ -104,6 +104,9 @@ pub struct TreeState {
     pub capture_prompt: Option<String>,
     /// The last row clicked (for Shift ranges).
     anchor: Option<String>,
+    /// The CAM tree is shown instead of the model browser (the second browser tab).
+    /// It also brings the Manufacture ribbon tab up.
+    pub cam_tab: bool,
     /// Row keys in drawing order this frame (for Shift ranges).
     order: Vec<String>,
     /// The previous frame's complete row order: a Shift click resolves its range here, since
@@ -848,10 +851,48 @@ fn browser_contents(app: &mut SolveApp, ui: &mut egui::Ui, acts: &mut Actions, c
     }
     t.secondary_hline(ui.painter(), ui.max_rect().x_range(), ui.cursor().top() + 1.0, t.toolbar.lerp_to_gamma(t.border, 0.5));
     ui.add_space(t.space_3);
+    browser_tabs(app, ui);
+    if app.tree.cam_tab {
+        crate::browser_cam::rows(app, ui);
+        return;
+    }
     if collapsible && !stacked {
         browser_rows_hugging(app, ui, acts);
     } else {
         browser_rows(app, ui, acts);
+    }
+}
+
+/// The two tree tabs: the model browser, marked with the SolidCraft mark, and the CAM
+/// tree, marked with an endmill in its holder. Picking CAM also brings the Manufacture
+/// ribbon tab up (see [`crate::workspace::visible_tabs`]).
+fn browser_tabs(app: &mut SolveApp, ui: &mut egui::Ui) {
+    let t = Tokens::get();
+    let h = 26.0f32;
+    let tab_w = 36.0f32;
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), h), Sense::hover());
+    for (i, cam_tab) in [false, true].into_iter().enumerate() {
+        let r = Rect::from_min_size(rect.min + vec2(i as f32 * tab_w, 0.0), vec2(tab_w, h));
+        let id = ui.id().with(if cam_tab { "tree-tab-cam" } else { "tree-tab-model" });
+        let response = ui.interact(r, id, Sense::click());
+        let active = app.tree.cam_tab == cam_tab;
+        let label = if cam_tab { crate::i18n::tr("ui.cam_tab").to_string() } else { crate::i18n::tr("ui.cam_model_tab").to_string() };
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), &label));
+        if cam_tab {
+            crate::icons::paint_icon(ui.painter(), Rect::from_center_size(r.center(), vec2(18.0, 18.0)), "endmill", if active { 1.0 } else { 0.55 });
+        } else {
+            crate::icons::glyphs::brand_mark_silhouette(ui.painter(), r.center(), 16.0, t.text.gamma_multiply(if active { 1.0 } else { 0.55 }));
+        }
+        if active {
+            ui.painter().hline(r.shrink_x(9.0).x_range(), r.bottom() - 1.0, egui::Stroke::new(2.0, t.accent));
+        }
+        if response.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(label).clicked() {
+            app.tree.cam_tab = cam_tab;
+            // Leaving the CAM tab takes the Manufacture ribbon tab away with it.
+            if !cam_tab && app.ui.tab == "MANUFACTURE" {
+                app.ui.tab = "MODEL".into();
+            }
+        }
     }
 }
 

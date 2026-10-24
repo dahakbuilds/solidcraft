@@ -14,6 +14,7 @@ pub mod agent_chat;
 pub mod agent_cursor;
 pub mod bom_panel;
 pub mod browser;
+pub mod browser_cam;
 pub mod browser_canvas;
 pub mod browser_prompts;
 pub mod canvas;

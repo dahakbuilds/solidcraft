@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Endmill</title>
+  <!-- collet nut over a tapering holder -->
+  <path d="M23 12h18v7l-5 9h-8l-5-9z" fill="none" stroke="currentColor" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- shank -->
+  <path d="M32 28v10" fill="none" stroke="currentColor" stroke-width="4.25" stroke-linecap="round"/>
+  <!-- cutting head with a flat nose -->
+  <path d="M26 38h12v14h-12z" fill="none" stroke="currentColor" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- flutes -->
+  <path d="M29.5 41v8M34.5 41v8" fill="none" stroke="currentColor" stroke-width="2.55" stroke-linecap="round"/>
+</svg>

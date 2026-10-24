@@ -16,7 +16,7 @@ pub static COMMANDS: &[CommandSpec] = &[
         .params("family, params {…}, path [[x,y,z] | {x,y,z,cut?}, …] or file (a G-code toolpath, format gcode: G0/G1 linear moves, G90/G91, G20/G21, T/M6; arcs refused); stock {min:[x,y,z], max:[x,y,z]}, part_top? (finished height, default the stock top), cell? mm (default footprint/200), tolerance? mm (default 0.05), unit? mm|inch; Z-map replay: removed volume, gouges below the part, material left above it, and rapid collisions"),
     CommandSpec::new("cam.setup", "CAM Setup", setup).icon("list").noundo().doc_only()
         .params("→ operations [{id, name, tool?, stock?, toolpath?, comment?}], fixtures [{id, name, path, origin}], origin {position, x_axis, z_axis}, tool_library?"),
-    CommandSpec::new("cam.operation.add", "Add CAM Operation", add_operation).at("CAM", "SETUP").icon("new").doc_only()
+    CommandSpec::new("cam.operation.add", "Add CAM Operation", add_operation).at("MANUFACTURE", "SETUP").icon("new").doc_only()
         .params("name?, tool? {number?, entry?, name?}, stock? {kind: box|x,y,z | cylinder|radius,height | body|body, origin?, allowance?}, comment? → id, name"),
     CommandSpec::new("cam.operation.rename", "Rename CAM Operation", rename_operation).icon("edit").doc_only()
         .params("id, name → id, name"),
@@ -24,11 +24,11 @@ pub static COMMANDS: &[CommandSpec] = &[
         .params("id → removed"),
     CommandSpec::new("cam.tool.assign", "Assign CAM Tool", assign_tool).icon("gear").doc_only()
         .params("id, number?, entry?, name? → tool"),
-    CommandSpec::new("cam.stock.set", "Set CAM Stock", set_stock).at("CAM", "SETUP").icon("box").doc_only()
+    CommandSpec::new("cam.stock.set", "Set CAM Stock", set_stock).at("MANUFACTURE", "SETUP").icon("box").doc_only()
         .params("id, kind: box (x, y, z) | cylinder (radius, height) | body (body), origin? [x,y,z], allowance? {plus_x, minus_x, plus_y, minus_y, plus_z, minus_z} → stock"),
     CommandSpec::new("cam.toolpath.set", "Set CAM Toolpath", set_toolpath).icon("line").doc_only()
         .params("id, segments [{type: line, from, to, cut?} | {type: arc, from, to, center, normal, clockwise?, cut?}] → segments"),
-    CommandSpec::new("cam.toolpath.load", "Load G-code Toolpath", load_toolpath).at("CAM", "SETUP").icon("import").doc_only()
+    CommandSpec::new("cam.toolpath.load", "Load G-code Toolpath", load_toolpath).at("MANUFACTURE", "SETUP").icon("import").doc_only()
         .params("file (G-code), format? (gcode), id? (existing operation; a new one by the file's name otherwise), allowance? (stock margin, default 0) → id, segments, tools, warnings, stock"),
     CommandSpec::new("cam.toolpath.remove", "Remove CAM Toolpath", remove_toolpath).icon("delete").doc_only()
         .params("id → removed"),
