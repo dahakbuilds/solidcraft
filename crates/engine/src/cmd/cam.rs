@@ -146,7 +146,6 @@ fn assign_tool(s: &mut Session, p: &Value) -> Result<Value> {
 fn set_stock(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "cam.stock.set";
     #[derive(Deserialize)]
-    #[serde(deny_unknown_fields)]
     struct StockSet {
         id: u64,
         #[serde(flatten)]

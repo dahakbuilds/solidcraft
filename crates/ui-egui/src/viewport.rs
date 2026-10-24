@@ -965,6 +965,18 @@ pub(crate) fn build_scene(app: &SolveApp) -> GpuScene {
         let pal = scene_palette(app.ui.dark, app.preferences.color_vision);
         let rapid = c4(Color32::from_rgb(pal.cam_rapid.0, pal.cam_rapid.1, pal.cam_rapid.2));
         let feed = c4(Color32::from_rgb(pal.cam_feed.0, pal.cam_feed.1, pal.cam_feed.2));
+        // CAM stock first: the see-through box or bar each operation starts from.
+        let stock_col = [pal.stock.0, pal.stock.1, pal.stock.2, 90u8];
+        for op in &s.doc.cam.operations {
+            let Some(stock) = &op.stock else { continue };
+            let Ok(Some(mesh)) = solidcraft_engine::cam::stock_mesh(stock) else { continue };
+            for t in &mesh.triangles {
+                for &i in t {
+                    let (Some(p), Some(n)) = (mesh.positions.get(i as usize), mesh.normals.get(i as usize)) else { continue };
+                    sc.trans_tri(p.to_f32(), n.to_f32(), stock_col);
+                }
+            }
+        }
         for op in &s.doc.cam.operations {
             let Some(path) = &op.toolpath else { continue };
             let tol = (app.cam.half_height() / 500.0).max(0.01);
@@ -4299,6 +4311,7 @@ pub(crate) fn scene_palette(dark: bool, mode: crate::theme::ColorVision) -> soli
         analysis: t.analysis,
         cam_rapid: solidcraft_engine::view::colors::CAM_RAPID,
         cam_feed: solidcraft_engine::view::colors::CAM_FEED,
+        stock: solidcraft_engine::view::colors::STOCK,
     }
 }
 

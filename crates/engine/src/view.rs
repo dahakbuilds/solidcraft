@@ -40,6 +40,8 @@ pub mod colors {
     /// CAM toolpaths: a rapid move (amber) and a feed move (green).
     pub const CAM_RAPID: Rgb = Rgb(232, 168, 32);
     pub const CAM_FEED: Rgb = Rgb(46, 174, 96);
+    /// CAM stock: the see-through block or bar an operation starts from.
+    pub const STOCK: Rgb = Rgb(150, 156, 164);
 }
 
 /// The colours a headless scene is drawn in. [`Palette::DEFAULT`] is [`colors`], the light
@@ -76,6 +78,8 @@ pub struct Palette {
     /// CAM toolpaths: a rapid move and a feed (cutting) move.
     pub cam_rapid: Rgb,
     pub cam_feed: Rgb,
+    /// CAM stock, drawn see-through.
+    pub stock: Rgb,
 }
 
 impl Palette {
@@ -100,6 +104,7 @@ impl Palette {
         analysis: AnalysisColors::DEFAULT,
         cam_rapid: colors::CAM_RAPID,
         cam_feed: colors::CAM_FEED,
+        stock: colors::STOCK,
     };
 }
 
@@ -147,10 +152,14 @@ fn bounds_by(s: &Session, sketches: bool, of: impl Fn(&solidcraft_doc::ModelBody
             }
         }
     }
-    // CAM toolpaths frame with the design (cheap endpoints; a bulging arc may sit a
-    // hair outside). Adding the two corners of each axis-aligned box spans it.
+    // CAM toolpaths and stock frame with the design (cheap endpoints; a bulging arc
+    // may sit a hair outside). Adding the two corners of each axis-aligned box spans it.
     for op in s.doc.cam.operations.iter() {
         if let Some((lo, hi)) = op.toolpath.as_ref().and_then(|t| t.loose_bounds()) {
+            b.add(Vec3::new(lo[0], lo[1], lo[2]));
+            b.add(Vec3::new(hi[0], hi[1], hi[2]));
+        }
+        if let Some((lo, hi)) = op.stock.as_ref().and_then(|st| st.extent()) {
             b.add(Vec3::new(lo[0], lo[1], lo[2]));
             b.add(Vec3::new(hi[0], hi[1], hi[2]));
         }
@@ -565,6 +574,13 @@ fn build_scene(
             let color = if line.cut { p.cam_feed } else { p.cam_rapid };
             sc.lines.push(SceneLine { points: line.points, color, width: 2.2, on_top: true });
         }
+    }
+    // CAM stock: the box or bar each operation starts from, see-through so the part
+    // inside it reads.
+    for op in &s.doc.cam.operations {
+        let Some(stock) = &op.stock else { continue };
+        let Ok(Some(mesh)) = crate::cam::stock_mesh(stock) else { continue };
+        sc.meshes.push(SceneMesh { mesh: Arc::new(mesh), color: p.stock, face_colors: vec![], opacity: 0.35 });
     }
     sc
 }

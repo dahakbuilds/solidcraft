@@ -118,16 +118,16 @@ impl StockKind {
 }
 
 /// The stock of one operation: its nominal shape, its work origin and the allowances
-/// added to it. (`deny_unknown_fields` cannot apply because the kind is flattened.)
+/// added to it. The kind is required; `deny_unknown_fields` cannot apply because the
+/// kind is flattened.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
 pub struct Stock {
     #[serde(flatten)]
     pub kind: StockKind,
     /// The stock's work origin (see the module placement convention).
-    #[serde(skip_serializing_if = "is_zero3")]
+    #[serde(default, skip_serializing_if = "is_zero3")]
     pub origin: [f64; 3],
-    #[serde(skip_serializing_if = "Allowance::is_zero")]
+    #[serde(default, skip_serializing_if = "Allowance::is_zero")]
     pub allowance: Allowance,
 }
 
@@ -192,7 +192,7 @@ impl WorkOrigin {
         check_point("work origin position", &self.position)?;
         for (what, axis) in [("x_axis", self.x_axis), ("z_axis", self.z_axis)] {
             let v = solidcraft_geom::Vec3::new(axis[0], axis[1], axis[2]);
-            if !(v.len() - 1.0).abs() < 1e-6 {
+            if (v.len() - 1.0).abs() >= 1e-6 {
                 return Err(invalid(format!("work origin {what} must be a unit vector")));
             }
         }
@@ -242,7 +242,7 @@ impl Operation {
 }
 
 /// A fixture holding the work: a model file placed in machine coordinates.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Fixture {
     pub id: u64,
