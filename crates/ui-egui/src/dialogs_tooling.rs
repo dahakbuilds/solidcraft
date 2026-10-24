@@ -433,7 +433,8 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                         if !unit.is_empty() {
                             label.push_str(&format!(" ({unit})"));
                         }
-                        ui.label(capitalize(&label));
+                        let resp = ui.label(capitalize(&label));
+                        eprintln!("tooling-layout: label `{label}` rect {:?} avail {:.1}", resp.rect, ui.available_width());
                         if let Some(text) = d.form.params.get_mut(i) {
                             ui.add(egui::TextEdit::singleline(text).desired_width(90.0));
                         }
