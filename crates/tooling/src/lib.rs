@@ -10,10 +10,12 @@
 #![forbid(unsafe_code)]
 
 pub mod family;
+pub mod mesh;
 pub mod model;
 pub mod profile;
 
 pub use family::{Family, ParamSpec, ParamUnit};
+pub use mesh::{Revolved, Role};
 pub use model::{Connection, ItemKind, Provenance, ToolEntry, ToolLibrary};
 pub use profile::{CutterProfile, Segment};
 
