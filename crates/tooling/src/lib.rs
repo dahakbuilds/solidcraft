@@ -9,12 +9,16 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
 
+pub mod assembly;
 pub mod family;
+pub mod holder;
 pub mod mesh;
 pub mod model;
 pub mod profile;
 
+pub use assembly::Assembly;
 pub use family::{Family, ParamSpec, ParamUnit};
+pub use holder::HolderType;
 pub use mesh::{Revolved, Role};
 pub use model::{Connection, ItemKind, Provenance, ToolEntry, ToolLibrary};
 pub use profile::{CutterProfile, Segment};

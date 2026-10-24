@@ -15,6 +15,10 @@ pub static COMMANDS: &[CommandSpec] = &[
         .params("no parameters; lists the milling tool families with their parameter schema"),
     CommandSpec::new("tool.profile", "Cutter Profile", profile).icon("inspect").noundo().doc_only()
         .params("family, params {…}, unit? mm|inch; the revolved cutter profile (segments from the tip upward, cutting flags) and derived lengths; reads no file"),
+    CommandSpec::new("tool.holders", "Tool Holders", holders).icon("inspect").noundo().doc_only()
+        .params("no parameters; lists the holder catalogue (spindle interfaces × bodies, bore range, nose length)"),
+    CommandSpec::new("tool.assembly", "Tool Assembly", assembly).icon("inspect").noundo().doc_only()
+        .params("family, params {…}, holder_type, stickout, bore? (default: shank_diameter), unit? mm|inch, steps?; the holder+tool assembly mesh (per-triangle roles) and derived lengths; reads no file"),
     CommandSpec::new("tool.library.open", "Tool Library", open).icon("inspect").noundo().doc_only()
         .params("path? (default: the user library in the data folder); opens the library file, creating it empty on first use; returns {path, library}; the toolbar opens the Tool Library window on this command"),
     CommandSpec::new("tool.library.create", "Create Tool Library", create).icon("export").noundo().doc_only()
@@ -56,6 +60,8 @@ struct Fields<'a> {
     work_connection: Option<&'a ConnReq>,
     notes: Option<&'a String>,
     provenance: Option<&'a Provenance>,
+    holder_type: Option<&'a str>,
+    stickout: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -108,6 +114,10 @@ struct Add {
     notes: Option<String>,
     #[serde(default)]
     provenance: Option<Provenance>,
+    #[serde(default)]
+    holder_type: Option<String>,
+    #[serde(default)]
+    stickout: Option<f64>,
 }
 impl Add {
     fn fields(&self) -> Fields<'_> {
@@ -123,6 +133,8 @@ impl Add {
             work_connection: self.work_connection.as_ref(),
             notes: self.notes.as_ref(),
             provenance: self.provenance.as_ref(),
+            holder_type: self.holder_type.as_deref(),
+            stickout: self.stickout,
         }
     }
 }
@@ -153,6 +165,10 @@ struct Edit {
     notes: Option<String>,
     #[serde(default)]
     provenance: Option<Provenance>,
+    #[serde(default)]
+    holder_type: Option<String>,
+    #[serde(default)]
+    stickout: Option<f64>,
 }
 impl Edit {
     fn fields(&self) -> Fields<'_> {
@@ -168,6 +184,8 @@ impl Edit {
             work_connection: self.work_connection.as_ref(),
             notes: self.notes.as_ref(),
             provenance: self.provenance.as_ref(),
+            holder_type: self.holder_type.as_deref(),
+            stickout: self.stickout,
         }
     }
 }
@@ -290,6 +308,83 @@ fn profile(_s: &mut Session, p: &Value) -> Result<Value> {
     serde_json::to_value(profile).map_err(|e| bad(cmd, e.to_string()))
 }
 
+fn holders(_s: &mut Session, _p: &Value) -> Result<Value> {
+    let list: Vec<Value> = tooling::holder::catalog()
+        .iter()
+        .map(|h| {
+            json!({
+                "id": h.id,
+                "label": h.label,
+                "body": h.body,
+                "spindle": h.spindle,
+                "bore_min": h.bore_min,
+                "bore_max": h.bore_max,
+                "nose_length": h.nose_len,
+                "overall_length": h.overall_length,
+            })
+        })
+        .collect();
+    Ok(json!({"holders": list}))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AssemblyReq {
+    family: String,
+    params: Value,
+    holder_type: String,
+    stickout: f64,
+    #[serde(default)]
+    bore: Option<f64>,
+    #[serde(default)]
+    unit: Option<String>,
+    #[serde(default)]
+    steps: Option<usize>,
+}
+
+fn assembly(_s: &mut Session, p: &Value) -> Result<Value> {
+    const CMD: &str = "tool.assembly";
+    let request: AssemblyReq = serde_json::from_value(p.clone()).map_err(|e| bad(CMD, e.to_string()))?;
+    let family = parse_family(CMD, &request.family)?;
+    let u = unit(CMD, request.unit.as_deref())?;
+    let params = parse_params(CMD, &request.params, family, &u)?;
+    let cutter = tooling::profile::of(family, &params).map_err(|e| bad(CMD, e.to_string()))?;
+    let bore = match request.bore {
+        Some(b) => b,
+        None => params.get("shank_diameter").copied().ok_or_else(|| bad(CMD, "params must carry shank_diameter or pass bore"))?,
+    };
+    let stickout = match &u {
+        Unit::Mm => request.stickout,
+        Unit::Inch => request.stickout * 25.4,
+    };
+    if !stickout.is_finite() || stickout <= 0.0 || stickout > 1000.0 {
+        return Err(bad(CMD, "stickout must be a finite length up to 1000 mm"));
+    }
+    let built = tooling::assembly::compose(&cutter, &request.holder_type, bore, stickout, request.steps.unwrap_or(48)).map_err(|e| bad(CMD, e.to_string()))?;
+    let mesh = &built.mesh;
+    let roles: Vec<&str> = mesh
+        .mesh
+        .tri_face
+        .iter()
+        .filter_map(|f| match mesh.face_roles.get(*f as usize)? {
+            tooling::Role::Cutting => Some("cutting"),
+            tooling::Role::Shank => Some("shank"),
+            tooling::Role::Holder => Some("holder"),
+        })
+        .collect();
+    Ok(json!({
+        "mesh": {
+            "positions": mesh.mesh.positions.iter().map(|v| json!([v.x, v.y, v.z])).collect::<Vec<_>>(),
+            "normals": mesh.mesh.normals.iter().map(|v| json!([v.x, v.y, v.z])).collect::<Vec<_>>(),
+            "triangles": mesh.mesh.triangles,
+            "roles": roles,
+        },
+        "overall_length": built.overall_length,
+        "max_radius": built.max_radius,
+        "reach": built.reach,
+    }))
+}
+
 /// The default user tool library file: `<data_dir>/libraries/tools.solidcraft-tools.json`;
 /// in the browser build, the same name inside the virtual filesystem.
 #[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
@@ -392,6 +487,21 @@ fn apply_fields(cmd: &str, entry: &mut ToolEntry, fields: &Fields) -> Result<()>
     if fields.provenance.is_some() {
         entry.provenance = fields.provenance.cloned().unwrap_or_default();
     }
+    if let Some(type_id) = fields.holder_type {
+        if type_id.is_empty() {
+            // an empty holder type clears the holder and with it the stickout
+            entry.holder_type = None;
+            entry.stickout = None;
+        } else {
+            entry.holder_type = Some(type_id.to_string());
+        }
+    }
+    if let Some(stickout) = fields.stickout {
+        entry.stickout = Some(match unit(cmd, fields.unit)? {
+            Unit::Mm => stickout,
+            Unit::Inch => stickout * 25.4,
+        });
+    }
     Ok(())
 }
 
@@ -421,6 +531,8 @@ fn add(_s: &mut Session, p: &Value) -> Result<Value> {
         product_id: None,
         product_url: None,
         params: BTreeMap::new(),
+        holder_type: None,
+        stickout: None,
         machine_connection: None,
         work_connection: None,
         notes: None,

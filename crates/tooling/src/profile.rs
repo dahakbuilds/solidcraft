@@ -128,7 +128,7 @@ pub fn of(family: Family, params: &BTreeMap<String, f64>) -> Result<CutterProfil
         Family::EndMillFlat => {
             let r = get("cutting_diameter")? / 2.0;
             let fl = get("flute_length")?;
-            let top = r - fl * family::half_tan(get("taper_angle")?);
+            let top = r + fl * family::half_tan(get("taper_angle")?);
             segs.push(Segment::line(0.0, 0.0, r, 0.0, true));
             segs.push(Segment::line(r, 0.0, top, fl, true));
             cutting_length = fl;
@@ -137,7 +137,7 @@ pub fn of(family: Family, params: &BTreeMap<String, f64>) -> Result<CutterProfil
         Family::EndMillBall => {
             let r = get("cutting_diameter")? / 2.0;
             let fl = get("flute_length")?;
-            let top = r - (fl - r) * family::half_tan(get("taper_angle")?);
+            let top = r + (fl - r) * family::half_tan(get("taper_angle")?);
             segs.push(Segment::arc(0.0, r, r, 0.0, 0.0, r, r, true));
             segs.push(Segment::line(r, r, top, fl, true));
             cutting_length = fl;
@@ -147,7 +147,7 @@ pub fn of(family: Family, params: &BTreeMap<String, f64>) -> Result<CutterProfil
             let r = get("cutting_diameter")? / 2.0;
             let cr = get("corner_radius")?;
             let fl = get("flute_length")?;
-            let top = r - (fl - cr) * family::half_tan(get("taper_angle")?);
+            let top = r + (fl - cr) * family::half_tan(get("taper_angle")?);
             segs.push(Segment::line(0.0, 0.0, r - cr, 0.0, true));
             segs.push(Segment::arc(r - cr, cr, cr, r - cr, 0.0, r, cr, true));
             segs.push(Segment::line(r, cr, top, fl, true));
