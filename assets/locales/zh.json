@@ -942,6 +942,7 @@
   "cmd.inspect_colored_components": "启用组件颜色",
   "cmd.inspect_colored_components_disable": "禁用组件颜色",
   "cmd.inspect_compare": "比较实体",
+  "cmd.inspect_compare_picture": "比较参考图",
   "cmd.inspect_continuity": "连续性分析",
   "cmd.inspect_curvature_comb": "曲率梳分析",
   "cmd.inspect_curvature_map": "曲率图分析",
