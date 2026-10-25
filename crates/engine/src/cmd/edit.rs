@@ -961,11 +961,11 @@ fn resolve_feature_names(v: &mut Value, doc: &solidcraft_doc::Document, cmd: &st
             if o.get("type").and_then(Value::as_str) == Some("construction") {
                 // Only a construction plane's name becomes an id: a revolve axis with the same
                 // shape names a construction axis, which is still keyed by name.
-                if let Some(name) = o.get("name").and_then(Value::as_str) {
-                    if let Some(f) = doc.find_feature(name).filter(|f| matches!(f.kind, FeatureKind::ConstructionPlane { .. })) {
-                        o.remove("name");
-                        o.insert("feature".into(), json!(f.id));
-                    }
+                if let Some(name) = o.get("name").and_then(Value::as_str)
+                    && let Some(f) = doc.find_feature(name).filter(|f| matches!(f.kind, FeatureKind::ConstructionPlane { .. }))
+                {
+                    o.remove("name");
+                    o.insert("feature".into(), json!(f.id));
                 }
                 return Ok(());
             }

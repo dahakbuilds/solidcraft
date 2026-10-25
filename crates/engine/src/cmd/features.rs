@@ -1785,10 +1785,7 @@ fn source_features(s: &Session, p: &Value, cmd: &str) -> Result<Vec<solidcraft_d
     }
     // Names stay input only: the feature stores its seeds by id (#1134), resolved the way
     // evaluation used to resolve them (a shared sketch name does not win over the geometry).
-    names
-        .iter()
-        .map(|n| s.doc.seed_feature(n).map(|f| f.id.into()).ok_or_else(|| bad(cmd, format!("no feature `{n}`"))))
-        .collect()
+    names.iter().map(|n| s.doc.seed_feature(n).map(|f| f.id.into()).ok_or_else(|| bad(cmd, format!("no feature `{n}`")))).collect()
 }
 
 /// An axis line from its parameter, with what it follows: an edge or round face of the model
@@ -1833,18 +1830,16 @@ fn named_axis_line(s: &Session, p: &Value, cmd: &str) -> Result<(Vec3, Vec3, Opt
 }
 
 /// A pattern feature, or for `components`, new occurrences of them at each placement.
-fn finish_pattern(s: &mut Session, p: &Value, features: Vec<solidcraft_doc::FeatureId>, pattern: solidcraft_doc::PatternKind, bodies: Vec<String>) -> Result<Value> {
+fn finish_pattern(
+    s: &mut Session,
+    p: &Value,
+    features: Vec<solidcraft_doc::FeatureId>,
+    pattern: solidcraft_doc::PatternKind,
+    bodies: Vec<String>,
+) -> Result<Value> {
     let comps = string_list(p, "components");
     if comps.is_empty() {
-        return add_feature(
-            s,
-            p,
-            FeatureKind::Pattern {
-                features,
-                pattern,
-                bodies: bodies.into_iter().map(BodyName).collect(),
-            },
-        );
+        return add_feature(s, p, FeatureKind::Pattern { features, pattern, bodies: bodies.into_iter().map(BodyName).collect() });
     }
     let cmd = "pattern (components)";
     let mats = solidcraft_doc::pattern_matrices(&s.doc, &s.model.state(), &pattern)?;
@@ -1961,17 +1956,7 @@ fn mirror(s: &mut Session, p: &Value) -> Result<Value> {
     let plane = plane_param(s, p.get("plane"), cmd)?;
     let combine = bool_(p, "combine").unwrap_or(false);
     let (bodies, placements) = placed_bodies(s, bodies, cmd)?;
-    add_feature(
-        s,
-        p,
-        FeatureKind::Mirror {
-            features,
-            plane,
-            bodies: bodies.into_iter().map(BodyName).collect(),
-            combine,
-            placements,
-        },
-    )
+    add_feature(s, p, FeatureKind::Mirror { features, plane, bodies: bodies.into_iter().map(BodyName).collect(), combine, placements })
 }
 
 /// Bodies picked where the viewport shows them: each world name ("Body1", or "Body1 (Occ:2)"

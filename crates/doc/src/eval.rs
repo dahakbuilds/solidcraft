@@ -6314,7 +6314,7 @@ const MAX_NESTING: usize = 8;
 
 /// The feature a pattern or mirror names as a source. Seeds are keyed by id (#1134): a
 /// reference that names no feature dangles, as a missing name did before.
-fn source_feature<'a>(doc: &'a Document, id: FeatureId) -> Result<&'a Feature> {
+fn source_feature(doc: &Document, id: FeatureId) -> Result<&Feature> {
     doc.feature(id.0).ok_or_else(|| DocError::Unknown(format!("feature `{id}`")))
 }
 
