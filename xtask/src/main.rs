@@ -64,7 +64,9 @@ commands:
   test [CARGO ARGS] [-- TEST ARGS]
                   build the tests with the ci profile, then run every test binary at once
                   (and the doc tests alongside); SOLIDCRAFT_TEST_JOBS=N bounds concurrent test
-                  and side commands for test/ci; inherited per-test/worker overrides are unchanged
+                  and side commands for test/ci and splits each binary's test threads and action
+                  matrix workers across the binaries in flight; explicit RUST_TEST_THREADS and
+                  ACTION_MATRIX_JOBS overrides still win
   wasm            cargo check every library crate and the web app for wasm32-unknown-unknown
   web-offline [DIR]
                   write the web build's service worker (sw.js: offline use, updates); run by
