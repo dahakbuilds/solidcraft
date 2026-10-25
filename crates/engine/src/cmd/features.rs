@@ -1783,10 +1783,11 @@ fn source_features(s: &Session, p: &Value, cmd: &str) -> Result<Vec<solidcraft_d
     if names.is_empty() {
         return Err(bad(cmd, "`features` must list features to copy"));
     }
-    // Names stay input only: the feature stores its seeds by id (#1134).
+    // Names stay input only: the feature stores its seeds by id (#1134), resolved the way
+    // evaluation used to resolve them (a shared sketch name does not win over the geometry).
     names
         .iter()
-        .map(|n| s.doc.find_feature(n).map(|f| f.id.into()).ok_or_else(|| bad(cmd, format!("no feature `{n}`"))))
+        .map(|n| s.doc.seed_feature(n).map(|f| f.id.into()).ok_or_else(|| bad(cmd, format!("no feature `{n}`"))))
         .collect()
 }
 
@@ -1860,7 +1861,7 @@ fn finish_pattern(s: &mut Session, p: &Value, features: Vec<solidcraft_doc::Feat
 
 /// What a pattern copies: features (replayed), bodies (`bodies: [names]`), or components
 /// (`components: [names]`, placed again as occurrences).
-fn pattern_sources(s: &Session, p: &Value, cmd: &str) -> Result<(Vec<String>, Vec<String>)> {
+fn pattern_sources(s: &Session, p: &Value, cmd: &str) -> Result<(Vec<solidcraft_doc::FeatureId>, Vec<String>)> {
     if !string_list(p, "components").is_empty() {
         return Ok((Vec::new(), Vec::new()));
     }

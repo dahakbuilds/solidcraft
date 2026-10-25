@@ -976,19 +976,22 @@ fn renaming_a_feature_evaluates_nothing() {
     run(&mut s, "edit.redo", json!({}));
     assert_eq!(labels(&s), renamed);
     assert_eq!(s.evaluations, 0, "undo and redo of a rename evaluate nothing");
-    // A sketch on the plane names it: renaming the plane renames it there too, which is evaluated.
+    // A sketch on the plane names it by id (#1134): renaming the plane changes no reference,
+    // so it now evaluates nothing — the name follows everywhere without a rebuild.
     run(&mut s, "sketch.create", json!({"plane": "Shelf", "name": "Top"}));
     run(&mut s, "sketch.finish", json!({}));
     s.evaluations = 0;
     run(&mut s, "timeline.rename", json!({"feature": "Shelf", "name": "Ledge"}));
-    assert!(s.evaluations > 0);
+    assert_eq!(s.evaluations, 0, "renaming a plane a sketch is built on evaluates nothing");
     assert!(labels(&s).2.contains(&"Ledge".to_string()));
-    // A failed pattern's error quotes its source's name: renaming the source is evaluated, so
-    // the error names it as an evaluation does.
+    // A failed pattern's error quotes its source's name (the seed is keyed by id, #1134, and
+    // the error is rendered from the source feature at evaluation): renaming the source is
+    // evaluated, so the error names it as an evaluation does.
     run(&mut s, "solid.pattern.rectangular", json!({"features": ["Base plate"], "dir1": [0, 0, 1], "count1": 2, "spacing1": 10, "name": "Copies"}));
     let copies = s.doc.find_feature("Copies").unwrap().id;
+    let top = s.doc.find_feature("Top").unwrap().id;
     if let Some(solidcraft_doc::FeatureKind::Pattern { features, .. }) = s.doc_mut().feature_mut(copies).map(|f| &mut f.kind) {
-        *features = vec!["Top".into()];
+        *features = vec![top.into()];
     }
     s.refresh();
     let failed = |s: &Session| s.model.results.iter().filter_map(|r| r.error.clone()).collect::<Vec<_>>();
