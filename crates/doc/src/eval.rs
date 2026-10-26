@@ -1561,20 +1561,20 @@ fn chain_fingerprint(
 
 /// The features a pattern or mirror of `features` replays: each source, and the sources of one
 /// that is itself a pattern or mirror of features (see `copy_plan`), each once.
-fn replayed_sources<'a>(doc: &'a Document, features: &[crate::FeatureName]) -> Vec<&'a Feature> {
+fn replayed_sources<'a>(doc: &'a Document, features: &[crate::FeatureId]) -> Vec<&'a Feature> {
     let mut out: Vec<&Feature> = Vec::new();
-    let mut todo: Vec<String> = crate::plain(features);
+    let mut todo: Vec<crate::FeatureId> = features.to_vec();
     // A bound on the walk, as on the copy plan's nesting: a design can't make it run on.
     for _ in 0..1024 {
-        let Some(name) = todo.pop() else { break };
-        let Ok(g) = source_feature(doc, &name) else { continue };
+        let Some(id) = todo.pop() else { break };
+        let Ok(g) = source_feature(doc, id) else { continue };
         if out.iter().any(|x| x.id == g.id) {
             continue;
         }
         if let FeatureKind::Pattern { features, bodies, .. } | FeatureKind::Mirror { features, bodies, .. } = &g.kind
             && bodies.is_empty()
         {
-            todo.extend(crate::plain(features));
+            todo.extend(features.iter().copied());
         }
         out.push(g);
     }
