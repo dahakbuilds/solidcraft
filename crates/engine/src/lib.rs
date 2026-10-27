@@ -723,6 +723,12 @@ impl Session {
 
     /// Mutable document (copy-on-write).
     pub fn doc_mut(&mut self) -> &mut Document {
+        // The placement index keeps the document alive with its answers; let it go before an
+        // in-place edit, so the edit stays in place (a shared handle would clone the document
+        // to a new address behind the crash journal's back, #7502) and no stale lookup outlives it.
+        if let Ok(mut index) = self.placement_index_cache.lock() {
+            *index = None;
+        }
         Arc::make_mut(&mut self.doc)
     }
 
@@ -1093,6 +1099,9 @@ impl Session {
         }
         // Checked first: storing makes the document unique (a copy when the undo step shares it).
         if self.model.edited_sketches(&self.doc).next().is_some() {
+            if let Ok(mut index) = self.placement_index_cache.lock() {
+                *index = None;
+            }
             self.model.adopt_solved_sketches(Arc::make_mut(&mut self.doc));
         }
         Ok(())
