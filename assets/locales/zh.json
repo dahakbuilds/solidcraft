@@ -1514,6 +1514,8 @@
   "prefs.left_click": "左键单击",
   "prefs.live_input": "实时输入",
   "prefs.live_preview": "实时预览",
+  "prefs.max_pattern_copies": "每个草图图案的最大副本数",
+  "prefs.max_pattern_copies_note": "一个草图图案可生成的最大副本数。以较高值保存的设计需要至少该值才能打开。",
   "prefs.minutes": "分钟",
   "prefs.minutes_suffix": " min",
   "prefs.mouse": "鼠标与触控板",

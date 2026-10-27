@@ -1514,6 +1514,8 @@
   "prefs.left_click": "Left click",
   "prefs.live_input": "Live input",
   "prefs.live_preview": "Live preview",
+  "prefs.max_pattern_copies": "Maximum copies per sketch pattern",
+  "prefs.max_pattern_copies_note": "Most copies one sketch pattern may make. Designs saved with a higher value need at least that value to open.",
   "prefs.minutes": "minutes",
   "prefs.minutes_suffix": " min",
   "prefs.mouse": "Mouse and trackpad",

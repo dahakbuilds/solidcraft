@@ -1514,6 +1514,8 @@
   "prefs.left_click": "לחיצה שמאלית",
   "prefs.live_input": "קלט חי",
   "prefs.live_preview": "תצוגה מקדימה חיה",
+  "prefs.max_pattern_copies": "מספר העותים המרבי לכל תבנית סקיצה",
+  "prefs.max_pattern_copies_note": "מספר העותים המרבי שתבנית סקיצה יכולה ליצור. עיצובים שנשמרו בערך גבוה יותר דורשים את הערך הזה או גבוה ממנו כדי להיפתח.",
   "prefs.minutes": "דקות",
   "prefs.minutes_suffix": " דק'",
   "prefs.mouse": "עכבר ומשטח מגע",

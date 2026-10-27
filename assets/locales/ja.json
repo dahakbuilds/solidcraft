@@ -1514,6 +1514,8 @@
   "prefs.left_click": "左クリック",
   "prefs.live_input": "現在の入力",
   "prefs.live_preview": "ライブプレビュー",
+  "prefs.max_pattern_copies": "スケッチパターンあたりの最大コピー数",
+  "prefs.max_pattern_copies_note": "1つのスケッチパターンが作成できる最大コピー数です。より高い値で保存されたデザインを開くには、その値以上が必要です。",
   "prefs.minutes": "分",
   "prefs.minutes_suffix": " min",
   "prefs.mouse": "マウスとトラックパッド",

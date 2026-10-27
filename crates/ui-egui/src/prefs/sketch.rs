@@ -9,6 +9,10 @@ pub(super) fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
         if ui_kit::checkbox(ui, crate::i18n::tr_label("Project face edges into new sketches"), &mut auto).changed() {
             let _ = app.run("sketch.auto_project", json!({"value": auto}));
         }
+        ui_kit::row(ui, app.tr("prefs.max_pattern_copies"), |ui| {
+            ui_kit::number_field(ui, &mut app.session.max_pattern_copies, 1..=solidcraft_engine::sketch::MAX_PATTERN_COPIES, 1.0, "")
+                .on_hover_text(app.tr("prefs.max_pattern_copies_note"))
+        });
         ui_kit::checkbox(ui, crate::i18n::tr_label("Pressing a tool's shortcut again switches its mode"), &mut app.preferences.shortcut_cycles_modes)
             .on_hover_text(crate::i18n::tr_label(
                 "Before the first point, pressing a sketch tool's shortcut again steps through its creation modes. Off: it starts the tool again.",

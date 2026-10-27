@@ -61,8 +61,11 @@ pub const MODIFIERS: &[ToolModifiers] = &[
 /// The three chamfer types, drawn as the cut each one makes, in `CHAMFER_TYPES` order.
 const CHAMFER_TYPE_ICONS: [&str; 3] = ["sketch_chamfer_equal", "sketch_chamfer_two", "sketch_chamfer_angle"];
 
-/// The engine's own cap on the copies one sketch pattern may make.
-const MAX_COPIES: f64 = 500.0;
+/// The session's cap on the copies one sketch pattern may make, clamped to the engine's
+/// absolute ceiling (#7824). The user raises or lowers it on the Sketch preferences page.
+pub(crate) fn copy_limit(app: &SolveApp) -> usize {
+    app.session.max_pattern_copies.clamp(1, solidcraft_engine::sketch::MAX_PATTERN_COPIES)
+}
 
 /// The offset directions, in the words and the order `solid.extrude` already uses for them.
 /// One Side offsets the way the distance points. Two Sides adds an independent distance the
@@ -377,10 +380,10 @@ fn quantity(ui: &mut egui::Ui, doc: &Document, label: &str, value: &mut String, 
 }
 
 /// How many copies the other direction of a rectangular pattern leaves this one, so that
-/// both together stay within `MAX_COPIES`. All of them while the other count is not a number.
-fn copies_left(doc: &Document, other: &str) -> i64 {
+/// both together stay within `limit`. All of them while the other count is not a number.
+fn copies_left(limit: i64, doc: &Document, other: &str) -> i64 {
     let other = doc.eval(other.trim(), ValueKind::Unitless).ok().filter(|v| v.is_finite() && *v >= 1.0).map_or(1.0, f64::round);
-    (MAX_COPIES / other).floor() as i64
+    (limit as f64 / other).floor() as i64
 }
 
 fn icons(ui: &mut egui::Ui, label: &str, labels: &[&'static str], icons: &[&'static str], selected: &mut usize) {
@@ -409,8 +412,8 @@ fn pattern_hint(ui: &mut egui::Ui) {
 }
 
 /// Dense rows after the selection inputs; true when an expression field accepts Enter.
-/// `doc` evaluates the pattern counts the step arrows change.
-pub fn rows(ui: &mut egui::Ui, k: &mut Mod, doc: &Document) -> bool {
+/// `doc` evaluates the pattern counts the step arrows change, `limit` caps their product.
+pub fn rows(ui: &mut egui::Ui, k: &mut Mod, doc: &Document, limit: i64) -> bool {
     let mut enter = false;
     match k {
         Mod::Scale { factor } => enter |= number(ui, "Factor", factor),
@@ -454,7 +457,7 @@ pub fn rows(ui: &mut egui::Ui, k: &mut Mod, doc: &Document) -> bool {
             enter |= number(ui, "Angle", angle);
         }
         Mod::PatternRect { count, spacing, count2, spacing2, alignment: a, alignment2, reversed, reversed2 } => {
-            let (left1, left2) = (copies_left(doc, count2), copies_left(doc, count));
+            let (left1, left2) = (copies_left(limit, doc, count2), copies_left(limit, doc, count));
             for (key, title, count, spacing, align, reverse, label, distance, align_label, left) in [
                 ("direction1", "Direction 1", count, spacing, a, reversed, "Quantity", "Spacing", "Alignment", left1),
                 ("direction2", "Direction 2", count2, spacing2, alignment2, reversed2, "Quantity 2", "Spacing 2", "Alignment 2", left2),
@@ -468,7 +471,7 @@ pub fn rows(ui: &mut egui::Ui, k: &mut Mod, doc: &Document) -> bool {
             pattern_hint(ui);
         }
         Mod::PatternCirc { count, angle, alignment: a, reversed } => {
-            enter |= quantity(ui, doc, "Quantity", count, 2, MAX_COPIES as i64);
+            enter |= quantity(ui, doc, "Quantity", count, 2, limit);
             enter |= number(ui, "Total angle", angle);
             alignment(ui, "Alignment", a, reversed);
             pattern_hint(ui);
@@ -649,9 +652,10 @@ fn signed_length(app: &SolveApp, label: &str, text: &str, flip: bool) -> Result<
 
 /// Validate a typed count before sending its expression to the command.
 fn whole(app: &SolveApp, label: &str, text: &str) -> Result<u64, String> {
+    let limit = copy_limit(app) as f64;
     let v = app.session.doc.eval(text.trim(), ValueKind::Unitless).map_err(|e| format!("{label}: {e}"))?;
-    if !v.is_finite() || !(1.0..=MAX_COPIES).contains(&v) || (v - v.round()).abs() > 1e-9 {
-        return Err(format!("{label} must be a whole number from 1 to {MAX_COPIES:.0}"));
+    if !v.is_finite() || !(1.0..=limit).contains(&v) || (v - v.round()).abs() > 1e-9 {
+        return Err(format!("{label} must be a whole number from 1 to {limit:.0}"));
     }
     Ok(v.round() as u64)
 }
@@ -830,8 +834,8 @@ pub fn commands(app: &SolveApp, k: &Mod, inputs: &[SelInput], extra: &Map<String
             if n2 > 1 && s2.abs() <= 1e-9 {
                 return Err("Spacing 2 must be a non-zero number".into());
             }
-            if n1.saturating_mul(n2) > MAX_COPIES as u64 {
-                return Err(format!("Quantity and Quantity 2 together must make at most {MAX_COPIES:.0} instances"));
+            if n1.saturating_mul(n2) > copy_limit(app) as u64 {
+                return Err(format!("Quantity and Quantity 2 together must make at most {} instances", copy_limit(app)));
             }
             let mut p = json!({"entities": entities, "count": count, "spacing": spacing, "count2": count2, "spacing2": spacing2, "alignment": alignment, "alignment2": alignment2, "reversed": reversed, "reversed2": reversed2});
             // A picked direction that has no component in the sketch plane is reported rather

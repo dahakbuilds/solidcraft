@@ -733,7 +733,9 @@ fn validate_sketch_sizes(value: &Value) -> Result<()> {
             for pattern in patterns {
                 let Some(entities) = pattern.get("entities").and_then(Value::as_array) else { return Err(invalid()) };
                 let Some(instances) = pattern.get("instances").and_then(Value::as_array) else { return Err(invalid()) };
-                if entities.len() > solidcraft_sketch::MAX_CURVES + solidcraft_sketch::MAX_POINTS || instances.len() >= 500 {
+                if entities.len() > solidcraft_sketch::MAX_CURVES + solidcraft_sketch::MAX_POINTS
+                    || instances.len() >= solidcraft_sketch::MAX_PATTERN_COPIES
+                {
                     return Err(invalid());
                 }
                 for instance in instances {

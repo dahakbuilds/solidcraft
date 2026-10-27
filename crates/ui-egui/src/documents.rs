@@ -158,6 +158,7 @@ fn swap_in(app: &mut SolveApp, mut slot: DocSlot) -> DocSlot {
     put_view(app, slot.view);
     // Preferences the session holds go with the user, not the tab (#680).
     app.session.auto_project = out.session.auto_project;
+    app.session.max_pattern_copies = out.session.max_pattern_copies;
     // Views cache by revision: the incoming design must not look unchanged.
     let before = app.session.revision;
     app.session.invalidate_view(out_rev);
@@ -1499,6 +1500,20 @@ mod tests {
         adopt(&mut a, Session::default());
         assert_eq!(a.docs.count(), 1);
         assert!(!a.session.auto_project, "a design adopted over a blank one");
+    }
+
+    /// The pattern copy limit is the same kind of user-scoped session preference (#7824).
+    #[test]
+    fn pattern_copy_limit_follows_the_user_across_tabs() {
+        let mut a = app();
+        a.session.max_pattern_copies = 2000;
+        new_design(&mut a);
+        assert_eq!(a.session.max_pattern_copies, 2000, "a new tab");
+        a.session.max_pattern_copies = 800;
+        switch(&mut a, 0);
+        assert_eq!(a.session.max_pattern_copies, 800, "the tab switched to");
+        let prefs: Value = serde_json::from_str(&a.prefs()).unwrap();
+        assert_eq!(prefs["max_pattern_copies"], 800);
     }
 
     /// Hide Origin by Default hides the Origin of designs that don't keep its eye; a design that

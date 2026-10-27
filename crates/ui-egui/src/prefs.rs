@@ -867,6 +867,7 @@ struct Snapshot {
     agent: crate::agent_cursor::Settings,
     autosave: f64,
     auto_project: bool,
+    max_pattern_copies: usize,
     keys: std::collections::BTreeMap<String, String>,
 }
 
@@ -885,6 +886,7 @@ impl Snapshot {
             agent: app.ui.agent_cursor,
             autosave: app.autosave_minutes,
             auto_project: app.session.auto_project,
+            max_pattern_copies: app.session.max_pattern_copies,
             keys: app.keymap.custom.clone(),
         }
     }
@@ -910,6 +912,7 @@ impl Snapshot {
         app.autosave_minutes = self.autosave;
         set_autosave(app);
         app.session.auto_project = self.auto_project;
+        app.session.max_pattern_copies = self.max_pattern_copies;
         app.keymap.custom = self.keys;
         if (app.preferences.msaa, app.preferences.window_system.clone(), app.preferences.graphics_adapter.clone()) != graphics {
             save_graphics(app);
@@ -1100,6 +1103,7 @@ fn defaults(app: &mut SolveApp, page: usize) {
         }
         PAGE_SKETCH => {
             app.session.auto_project = true;
+            app.session.max_pattern_copies = solidcraft_engine::sketch::DEFAULT_PATTERN_COPIES;
             app.ui.pick_bodies = false;
         }
         _ => {}
@@ -3466,6 +3470,20 @@ mod tests {
         defaults(&mut app, PAGE_SKETCH);
         assert!(!app.ui.pick_bodies);
         assert!(app.session.auto_project);
+    }
+
+    #[test]
+    fn pattern_copy_limit_round_trips_and_clamps() {
+        let mut app = SolveApp::new(Default::default(), Default::default());
+        assert_eq!(app.session.max_pattern_copies, solidcraft_engine::sketch::DEFAULT_PATTERN_COPIES);
+        app.session.max_pattern_copies = 5000;
+        let mut other = SolveApp::new(Default::default(), Default::default());
+        other.load_prefs(&app.prefs());
+        assert_eq!(other.session.max_pattern_copies, 5000);
+        other.load_prefs(r#"{"max_pattern_copies": 99999999}"#);
+        assert_eq!(other.session.max_pattern_copies, solidcraft_engine::sketch::MAX_PATTERN_COPIES);
+        defaults(&mut app, PAGE_SKETCH);
+        assert_eq!(app.session.max_pattern_copies, solidcraft_engine::sketch::DEFAULT_PATTERN_COPIES);
     }
 
     fn hole_preset_row(name: &str) -> serde_json::Value {

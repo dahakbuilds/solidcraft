@@ -1514,6 +1514,8 @@
   "prefs.left_click": "نقر أيسر",
   "prefs.live_input": "الإدخال المباشر",
   "prefs.live_preview": "المعاينة المباشرة",
+  "prefs.max_pattern_copies": "الحد الأقصى للنسخ لكل نمط رسم تخطيطي",
+  "prefs.max_pattern_copies_note": "أقصى عدد من النسخ يمكن أن ينشئه نمط الرسم التخطيطي. التصاميم المحفوظة بقيمة أعلى تحتاج إلى هذه القيمة أو أكثر لفتحها.",
   "prefs.minutes": "دقائق",
   "prefs.minutes_suffix": " دقيقة",
   "prefs.mouse": "الفأرة ولوحة اللمس",

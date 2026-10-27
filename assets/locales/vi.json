@@ -1514,6 +1514,8 @@
   "prefs.left_click": "Nhấp chuột trái",
   "prefs.live_input": "Nhập liệu trực tiếp",
   "prefs.live_preview": "Xem trước trực tiếp",
+  "prefs.max_pattern_copies": "Số bản sao tối đa mỗi mẫu phác thảo",
+  "prefs.max_pattern_copies_note": "Số bản sao tối đa một mẫu phác thảo có thể tạo. Bản thiết kế lưu với giá trị cao hơn cần ít nhất giá trị đó để mở.",
   "prefs.minutes": "phút",
   "prefs.minutes_suffix": " phút",
   "prefs.mouse": "Chuột và bàn di cảm ứng",
