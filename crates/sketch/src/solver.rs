@@ -36,7 +36,8 @@ const MAX_ITERS: usize = 500;
 /// matrix for the Levenberg-Marquardt step, rows by n for the Jacobian. 4,000 variables is a
 /// 128 MB matrix; past that the request grows to gigabytes and an allocation failure aborts the
 /// process, which no panic guard can intercept. A component this size is reported as failed and
-/// its geometry left alone.
+/// its geometry left alone — unless it is a pattern's star, which splits into per-copy pieces
+/// that each solve small (#7824, see [`pattern_star`]).
 pub const MAX_COMPONENT_VARS: usize = 4_000;
 /// Converged when every residual is below this (mm).
 const TOL: f64 = 1e-9;
@@ -106,7 +107,7 @@ impl SolveReport {
     pub fn failure(&self, conflict: impl FnOnce(&str) -> String) -> String {
         if let Some(n) = self.oversized {
             return format!(
-                "the sketch joins {n} unknowns (point coordinates and radii) in one connected group, more than the {MAX_COMPONENT_VARS} the solver takes at once; a pattern joins all its copies: make fewer copies, or split them over several patterns or sketches"
+                "the sketch joins {n} unknowns (point coordinates and radii) in one connected group, more than the {MAX_COMPONENT_VARS} the solver takes at once; make fewer copies, or split them over several patterns or sketches"
             );
         }
         if self.folded.is_empty() {
@@ -2596,6 +2597,157 @@ fn solve_sensed(
     report
 }
 
+/// An oversized component built by a pattern is a star: every copy hangs off the seed's
+/// group and no copy touches another, so the dense system grows with the copies for nothing
+/// (#7824, #5280). Split it: the seed's group (the hub) solves densely as any component
+/// does; each copy group solves against the hub's values held as constants — its piece
+/// carries only its own variables, so LM never differentiates the hub. Copies the user
+/// tied to each other, to the seed, or reused as another pattern's seed merge into the hub;
+/// a merged group still too large is returned in `too_big` and reported oversized as before.
+/// `None` when the component holds no pattern blocks or its hub alone is too large — there
+/// the oversized report stays the answer.
+///
+/// Returns (hub vars, hub block indices, per-copy pieces, too-big remainders); each piece is
+/// (vars, block indices) with sorted vars.
+fn pattern_star(
+    lay: &Layout,
+    vars: &[usize],
+    bis: &[usize],
+    all_blocks: &[(Block, Vec<usize>)],
+) -> Option<(Vec<usize>, Vec<usize>, Vec<(Vec<usize>, Vec<usize>)>, Vec<(Vec<usize>, Vec<usize>)>)> {
+    // Per pattern block: the copy-side variables it determines and the seed-side it reads.
+    // A copy side that is a constant (held point or radius) leaves its block on the hub.
+    let mut claims: Vec<(usize, Vec<usize>)> = Vec::new(); // (block, copy vars)
+    let mut seed_vars = std::collections::HashSet::new();
+    for &bi in bis {
+        let (block, _) = all_blocks.get(bi)?;
+        let (copy, seed) = match block {
+            Block::User(_, ConstraintKind::PatternPoint { p, q, center, .. }) => {
+                let pt = |i: usize| lay.pvar.get(i).copied().flatten().map(|v| vec![v, v + 1]).unwrap_or_default();
+                (pt(*q), pt(*p).into_iter().chain(center.map_or_else(Vec::new, pt)).collect::<Vec<_>>())
+            }
+            Block::User(_, ConstraintKind::PatternRadius { a, b }) => {
+                (lay.rvar.get(*b).copied().flatten().into_iter().collect(), lay.rvar.get(*a).copied().flatten().into_iter().collect())
+            }
+            _ => continue,
+        };
+        if !copy.is_empty() {
+            seed_vars.extend(seed);
+            claims.push((bi, copy));
+        }
+    }
+    if claims.is_empty() {
+        return None;
+    }
+    // One leaf per claim. A copy variable claimed twice, or reused as some claim's seed
+    // side, is hub geometry like any other: its leaf merges into the hub.
+    let hub = claims.len(); // union-find index of the hub
+    let mut leaf_of: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut parent: Vec<usize> = (0..=hub).collect();
+    for (li, (_, copy)) in claims.iter().enumerate() {
+        for &v in copy {
+            if leaf_of.insert(v, li).is_some() {
+                union(&mut parent, li, hub);
+            }
+        }
+    }
+    for &v in &seed_vars {
+        if let Some(&li) = leaf_of.get(&v) {
+            union(&mut parent, li, hub);
+        }
+    }
+    // Non-pattern blocks merge the leaves they touch: a block reading one leaf's variables
+    // belongs to it; one reading two leaves' ties those copies into a group; one reading a
+    // variable outside the leaves (hub geometry) merges its leaves into the hub.
+    let is_claim: std::collections::HashSet<usize> = claims.iter().map(|(bi, ..)| *bi).collect();
+    for &bi in bis {
+        if is_claim.contains(&bi) {
+            continue;
+        }
+        let (_, bv) = &all_blocks[bi];
+        let mut touched: Vec<usize> = Vec::new();
+        let mut hub_side = false;
+        for &v in bv {
+            match leaf_of.get(&v) {
+                Some(&li) => touched.push(li),
+                None => hub_side = true,
+            }
+        }
+        if hub_side {
+            for li in touched {
+                union(&mut parent, li, hub);
+            }
+        } else if let Some(&first) = touched.first() {
+            for &li in &touched[1..] {
+                union(&mut parent, first, li);
+            }
+        }
+    }
+    // The surviving leaf groups, each with its variables.
+    let hub_root = find(&mut parent, hub);
+    let mut groups: std::collections::BTreeMap<usize, Vec<usize>> = std::collections::BTreeMap::new();
+    for li in 0..claims.len() {
+        let r = find(&mut parent, li);
+        if r != hub_root {
+            groups.entry(r).or_default().push(li);
+        }
+    }
+    if groups.is_empty() {
+        return None;
+    }
+    let mut group_of: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut gvars: Vec<Vec<usize>> = Vec::with_capacity(groups.len());
+    let mut gbis: Vec<Vec<usize>> = Vec::with_capacity(groups.len());
+    for les in groups.values() {
+        let mut vs: Vec<usize> = les.iter().flat_map(|&li| claims[li].1.iter().copied()).collect();
+        vs.sort_unstable();
+        vs.dedup();
+        gvars.push(vs);
+        gbis.push(Vec::new());
+    }
+    for (gi, vs) in gvars.iter().enumerate() {
+        for &v in vs {
+            group_of.insert(v, gi);
+        }
+    }
+    // Every block goes to the piece that owns all its variables.
+    let mut hub_bis: Vec<usize> = Vec::new();
+    for (gi, (_, les)) in groups.iter().enumerate() {
+        for &li in les {
+            if find(&mut parent, li) == hub_root {
+                hub_bis.push(claims[li].0); // merged after the grouping above
+            } else {
+                gbis[gi].push(claims[li].0);
+            }
+        }
+    }
+    for &bi in bis {
+        if is_claim.contains(&bi) {
+            continue;
+        }
+        let (_, bv) = &all_blocks[bi];
+        let gi = bv
+            .iter()
+            .map(|v| group_of.get(v).copied())
+            .reduce(|a, b| match (a, b) {
+                (Some(x), Some(y)) if x == y => Some(x),
+                _ => None,
+            })
+            .flatten();
+        match gi {
+            Some(g) if !bv.is_empty() => gbis[g].push(bi),
+            _ => hub_bis.push(bi),
+        }
+    }
+    let hub_vars: Vec<usize> = vars.iter().copied().filter(|v| !group_of.contains_key(v)).collect();
+    if hub_vars.len() > MAX_COMPONENT_VARS {
+        return None;
+    }
+    hub_bis.sort_unstable();
+    let (leaves, too_big) = gvars.into_iter().zip(gbis).partition(|(vs, _)| vs.len() <= MAX_COMPONENT_VARS);
+    Some((hub_vars, hub_bis, leaves, too_big))
+}
+
 fn solve_inner(
     sk: &mut Sketch,
     hold: &Hold,
@@ -2738,10 +2890,49 @@ fn solve_inner(
         c.oversized_components = c.oversized_components.saturating_add(comps.iter().filter(|(_, v, b)| !b.is_empty() && oversized(v)).count() as u64);
         c.constructed_variables = c.constructed_variables.saturating_add(constructed.iter().filter(|v| **v).count() as u64);
     });
+    // An oversized component that is a pattern's star splits into the seed's group and one
+    // group per copy, so no dense system grows with the copies (#7824). `leaf` marks the
+    // copy pieces: they solve against the hub's values as constants, and their analysis
+    // pins the hub side rather than treating the piece as floating.
+    let mut leaf = vec![false; comps.len()];
+    let mut leaf_total = 0usize;
+    if comps.iter().any(|(_, v, b)| !b.is_empty() && oversized(v)) {
+        let whole = std::mem::take(&mut comps);
+        leaf.clear();
+        for (root, vars, bis) in whole {
+            match pattern_star(&lay, &vars, &bis, &all_blocks) {
+                Some((hub_vars, hub_bis, leaves, too_big)) => {
+                    comps.push((root, hub_vars, hub_bis));
+                    leaf.push(false);
+                    for (lv, lb) in leaves {
+                        comps.push((root, lv, lb));
+                        leaf.push(true);
+                        leaf_total += 1;
+                    }
+                    for (lv, lb) in too_big {
+                        comps.push((root, lv, lb));
+                        leaf.push(false);
+                    }
+                }
+                None => {
+                    comps.push((root, vars, bis));
+                    leaf.push(false);
+                }
+            }
+        }
+    }
+    // Progress for the batched copies, when this solve is watched (#7824): the solve loop
+    // and the analysis loop each walk the leaf pieces, so the bar runs over both.
+    let mut leaf_done = 0usize;
+    let report_leaf = |done: usize, total: usize| {
+        if total > 0 && (done.is_multiple_of(256) || done == total) {
+            crate::watch::progress("pattern copies", done, total);
+        }
+    };
     let blocks_of = |bis: &mut dyn Iterator<Item = usize>| -> Vec<(Block, Vec<usize>)> {
         bis.filter_map(|bi| all_blocks.get(bi).map(|(b, v)| (copy_block(b), v.clone()))).collect()
     };
-    for (_, vars, bis) in &comps {
+    for (ci, (_, vars, bis)) in comps.iter().enumerate() {
         if bis.is_empty() || oversized(vars) {
             continue;
         }
@@ -2850,6 +3041,10 @@ fn solve_inner(
                 }
             }
         }
+        if leaf[ci] {
+            leaf_done += 1;
+            report_leaf(leaf_done, leaf_total.saturating_mul(2));
+        }
     }
 
     // Final residuals and analysis, component by component (the Jacobian is block diagonal:
@@ -2883,7 +3078,7 @@ fn solve_inner(
             }
         }
     };
-    for (_, vars, bis) in &comps {
+    for (ci, (_, vars, bis)) in comps.iter().enumerate() {
         if oversized(vars) {
             continue;
         }
@@ -2918,9 +3113,15 @@ fn solve_inner(
         }
         // The rank analysis runs on what `pinned` leaves: see there for why that is exact.
         let floating = bis.iter().all(|bi| !reads_constant.get(*bi).copied().unwrap_or(true));
-        let pin = match vars.iter().copied().find(|v| lay.is_point(*v)) {
-            Some(anchor) if floating => Pin::Floating(anchor),
-            _ => Pin::Anchored,
+        // A copy piece solves against the hub side held as constants: its unknowns are
+        // determined given the hub, exactly as a pinned component's are (#7824).
+        let pin = if leaf[ci] {
+            Pin::Anchored
+        } else {
+            match vars.iter().copied().find(|v| lay.is_point(*v)) {
+                Some(anchor) if floating => Pin::Floating(anchor),
+                _ => Pin::Anchored,
+            }
         };
         let pin_flags = pinned(sk, &lay, &sub, vars, &mut x, &|_| true, pin);
         let rest = unpinned(vars, &pin_flags, pin.anchor());
@@ -2957,6 +3158,10 @@ fn solve_inner(
             let (_, j, _) = local_system(sk, &lay, &sub, &mut x, &col, vars.len());
             let reduced: Vec<bool> = vars.iter().map(|v| det.get(*v).copied().unwrap_or(false)).collect();
             assert_dense_agrees(&j, comp_rank, &reduced);
+        }
+        if leaf[ci] {
+            leaf_done += 1;
+            report_leaf(leaf_done, leaf_total.saturating_mul(2));
         }
     }
     let consts = blocks_of(&mut constant_blocks.iter().copied());

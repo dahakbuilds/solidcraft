@@ -657,26 +657,23 @@ fn circular_quantity_changes_keep_partial_full_centered_and_reversed_placements(
     }
 }
 
-/// #5280: a pattern joins its copies into one group of unknowns, and a group larger than the
-/// solver takes is refused saying so, not as an over-constraint with no constraint named.
+/// #5280: a pattern used to join its copies into one group of unknowns, and a group larger
+/// than the solver takes was refused saying so. The star now splits per copy (#7824): the
+/// same pattern solves, each copy against the seed's group.
 #[test]
-fn a_pattern_too_large_to_solve_says_why() {
+fn a_pattern_past_the_old_component_wall_solves() {
     let hexagon = |s: &mut Session| {
         let r = run(s, "sketch.polygon.inscribed", json!({"center": [0, 0], "radius": 2.5, "sides": 6}));
         ids(&r["curves"])
     };
-    // 15 × 22 hexagons: inside the limit.
+    // 17 × 20 hexagons: past the old dense wall (340 copies × 12 unknowns).
     let mut s = new_sketch();
     let lines = hexagon(&mut s);
-    run(&mut s, "sketch.pattern.rectangular", json!({"entities": lines, "count": 15, "spacing": 6.5, "count2": 22, "spacing2": 6.5}));
-    // 17 × 20: past it.
-    let mut s = new_sketch();
-    let lines = hexagon(&mut s);
-    let e = s
-        .execute("sketch.pattern.rectangular", &json!({"entities": lines, "count": 17, "spacing": 6.5, "count2": 20, "spacing2": 6.5}))
-        .unwrap_err()
-        .to_string();
-    assert!(e.contains("unknowns") && e.contains(&solidcraft_sketch::MAX_COMPONENT_VARS.to_string()) && !e.contains("conflicts with"), "{e}");
+    run(&mut s, "sketch.pattern.rectangular", json!({"entities": lines, "count": 17, "spacing": 6.5, "count2": 20, "spacing2": 6.5}));
+    let state = s.world_state();
+    let ss = state.sketch(1).unwrap();
+    assert!(ss.report.oversized.is_none(), "{:?}", ss.report.oversized);
+    assert!(ss.report.ok(), "{:?}", ss.report);
 }
 
 #[test]
@@ -766,6 +763,8 @@ fn pattern_copy_limit_is_a_session_preference() {
     s.max_pattern_copies = 2000;
     let out = run(&mut s, "sketch.pattern.rectangular", json!({"entities":["l1"],"count":38,"count2":38,"spacing":10}));
     assert_eq!(ids(&out["curves"]).len(), 1444 - 1);
+    // 1444 copies of a line is past the old dense wall: it solves copy by copy (#7824).
+    assert!(s.world_state().sketch(1).unwrap().report.ok(), "the raised pattern solves");
     run(&mut s, "sketch.pattern.rectangular", json!({"pattern":out["pattern"],"count":40}));
     // The raised design still reads back: format validation checks the ceiling, not the default.
     assert!(solidcraft_doc::format::read(&s.doc.to_json()).is_ok());

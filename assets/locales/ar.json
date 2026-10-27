@@ -1131,6 +1131,7 @@
   "dialog.compute": "احسب",
   "dialog.compute_again": "احسب مرة أخرى",
   "dialog.computing": "جارٍ الحساب… {seconds} ث",
+  "dialog.pattern_copies": "نسخ النمط {done} / {total}",
   "dialog.could_not_be_checked": "تعذّر فحصه",
   "dialog.custom_axis": "↖ محور مخصص",
   "dialog.dimension_insert_hint": "انقر على بُعد قائد آخر لإدراج اسمه",

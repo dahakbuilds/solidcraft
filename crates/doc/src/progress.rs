@@ -125,6 +125,20 @@ impl solidcraft_kernel::watch::Watch for KernelWatch {
     }
 }
 
+/// The sketch solver's long work (a pattern's batched copies, #7824) reports to the same
+/// progress; it cannot be cancelled mid-solve.
+struct SketchWatch(Arc<Progress>);
+
+impl solidcraft_sketch::watch::Watch for SketchWatch {
+    fn progress(&self, stage: &'static str, done: usize, total: usize) {
+        if let Ok(mut s) = self.0.work_stage.lock() {
+            *s = stage;
+        }
+        self.0.work_total.store(total, Ordering::Relaxed);
+        self.0.work_done.store(done, Ordering::Relaxed);
+    }
+}
+
 struct Current {
     progress: Arc<Progress>,
     /// Nested evaluations (derived designs) don't overwrite the outer timeline's count.
@@ -138,6 +152,7 @@ thread_local! {
 /// Run `f` with `progress` watching every evaluation it makes on this thread.
 pub fn watch<R>(progress: Arc<Progress>, f: impl FnOnce() -> R) -> R {
     let kernel = Arc::new(KernelWatch(progress.clone()));
+    let sketch = Arc::new(SketchWatch(progress.clone()));
     let previous = CURRENT.with(|c| c.replace(Some(Current { progress, depth: 0 })));
     struct Restore(Option<Option<Current>>);
     impl Drop for Restore {
@@ -148,7 +163,7 @@ pub fn watch<R>(progress: Arc<Progress>, f: impl FnOnce() -> R) -> R {
         }
     }
     let _restore = Restore(Some(previous));
-    solidcraft_kernel::watch::watching(kernel, f)
+    solidcraft_kernel::watch::watching(kernel, || solidcraft_sketch::watch::watching(sketch, f))
 }
 
 /// Entered at the start of an evaluation; the guard leaves it.
@@ -261,6 +276,18 @@ mod tests {
         });
         assert_eq!(p.features(), (5, 5));
         assert!(!begin(1).step(0), "the watch ends with its scope");
+    }
+
+    /// The sketch solver's batched copies (#7824) report through the same work channel.
+    #[test]
+    fn sketch_solver_progress_lands_in_the_work_channel() {
+        let p = Arc::new(Progress::default());
+        assert_eq!(p.work(), None);
+        watch(p.clone(), || {
+            use solidcraft_sketch::watch::Watch as _;
+            SketchWatch(p.clone()).progress("pattern copies", 3, 10);
+        });
+        assert_eq!(p.work(), Some(("pattern copies", 3, 10)));
     }
 
     /// The item a command is on reaches its watcher, and only a watcher.

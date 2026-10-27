@@ -1131,6 +1131,7 @@
   "dialog.compute": "计算",
   "dialog.compute_again": "重新计算",
   "dialog.computing": "正在计算… {seconds} 秒",
+  "dialog.pattern_copies": "图案副本 {done} / {total}",
   "dialog.could_not_be_checked": "无法检查",
   "dialog.custom_axis": "↖ 自定义轴",
   "dialog.dimension_insert_hint": "单击其他驱动尺寸以插入其名称",

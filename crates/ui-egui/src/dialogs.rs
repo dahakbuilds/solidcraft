@@ -2937,6 +2937,15 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                     let seconds = ((crate::now_ms() - job.started) / 1000.0).floor().max(0.0);
                     crate::i18n::format("dialog.computing", &[("seconds", &format!("{seconds:.0}"))])
                 });
+                // A pattern solves its copies group by group: show how far it has got (#7824).
+                if let Some((_, done, total)) =
+                    app.applying.as_ref().and_then(|job| job.progress.work()).filter(|(_, d, t)| *t > 0 && *d < *t)
+                {
+                    let label = crate::i18n::format("dialog.pattern_copies", &[("done", &done.to_string()), ("total", &total.to_string())]);
+                    crate::ui_kit::text(ui, &label, crate::ui_kit::Text::Note("pattern_copies"));
+                    crate::ui_kit::progress(ui, "pattern_copies", done as f32 / total as f32);
+                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+                }
                 crate::ui_kit::ComputeStatus { text, busy: app.applying.is_some() || app.preview.busy, applying: app.applying.is_some() }
             };
             let (closed, action) = if manager {

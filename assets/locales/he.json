@@ -1131,6 +1131,7 @@
   "dialog.compute": "חישוב",
   "dialog.compute_again": "חישוב מחדש",
   "dialog.computing": "מחשב… {seconds} שנ'",
+  "dialog.pattern_copies": "עותקי דפוס {done} / {total}",
   "dialog.could_not_be_checked": "לא ניתן היה לבדוק",
   "dialog.custom_axis": "↖ ציר מותאם",
   "dialog.dimension_insert_hint": "יש ללחוץ על מידה מניעה אחרת כדי להוסיף את שמה",

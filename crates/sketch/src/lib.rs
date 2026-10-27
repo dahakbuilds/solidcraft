@@ -40,6 +40,7 @@ mod spline_points;
 mod text;
 mod thin;
 mod union_find;
+pub mod watch;
 mod wire;
 
 pub use curves::{
@@ -95,6 +96,8 @@ mod font_tests;
 mod least_motion_tests;
 #[cfg(test)]
 mod line_circle_tests;
+#[cfg(test)]
+mod pattern_batch_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

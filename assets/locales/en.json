@@ -1131,6 +1131,7 @@
   "dialog.compute": "Compute",
   "dialog.compute_again": "Compute again",
   "dialog.computing": "Computing… {seconds} s",
+  "dialog.pattern_copies": "Pattern copies {done} / {total}",
   "dialog.could_not_be_checked": "could not be checked",
   "dialog.custom_axis": "↖ Custom Axis",
   "dialog.dimension_insert_hint": "Click another driving dimension to insert its name",
