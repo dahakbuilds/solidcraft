@@ -4207,6 +4207,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "solidcore"
+version = "0.0.1"
+source = "git+https://github.com/tangency-labs/solidcore?rev=c2e50ca7ac11b27ed0ffb475b7ed552bc7fadd31#c2e50ca7ac11b27ed0ffb475b7ed552bc7fadd31"
+dependencies = [
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "solidcraft"
 version = "0.24.1"
 dependencies = [
@@ -4365,6 +4373,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "solidcore",
  "solidcraft-geom",
  "spade",
  "thiserror 2.0.21",

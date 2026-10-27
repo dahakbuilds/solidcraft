@@ -58,6 +58,26 @@ pub(super) fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
         setting::hide_origin(app, ui);
         ui_kit::text(ui, app.tr("ui.hide_origin_note"), ui_kit::Text::Hint("hide_origin"));
     });
+    ui_kit::settings_section(ui, "kernel", crate::i18n::tr_label("Geometry kernel"), |ui| {
+        ui_kit::settings_form(ui, t.space_24 * 7.0 + t.space_2, |ui| {
+            ui_kit::row(ui, crate::i18n::tr_label("B-rep kernel"), |ui| {
+                let ids = ["truck", "solidcore"];
+                let mut selected = ids.iter().position(|id| *id == app.preferences.kernel).unwrap_or(0);
+                ui_kit::segmented(ui, &mut selected, &["Truck", "Solidcore"], ui_kit::Segments { intrinsic: true, ..Default::default() });
+                if let Some(id) = ids.get(selected)
+                    && app.preferences.kernel != *id
+                {
+                    app.preferences.kernel = (*id).into();
+                    kernel_changed(app);
+                }
+            });
+        });
+        ui_kit::text(
+            ui,
+            crate::i18n::tr_label("Solidcore is the experimental kernel. Until it covers an operation, that operation uses the stable truck kernel."),
+            ui_kit::Text::Hint("kernel"),
+        );
+    });
     // The Hole command's own settings, under its name.
     ui_kit::settings_section(ui, "create_hole", crate::i18n::tr_label("Create Hole"), |ui| {
         setting::hole_snaps(app, ui);

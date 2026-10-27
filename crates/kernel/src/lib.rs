@@ -31,6 +31,7 @@ mod build;
 mod candidate_reach;
 #[cfg(test)]
 mod chamfer_sides_curved_tests;
+mod choice;
 mod clearance;
 mod coaxial_overlap;
 mod continuity;
@@ -167,6 +168,7 @@ pub use build::{
     PathSeg, box_solid, canonical_revolve_axis, cylinder, extrude, extrude_tapered, extrude_tapered_between, extrude_whole_sides, loft, loft_regions,
     loft_with_rails, path_polyline, revolve, revolve_whole, sphere, sweep, sweep_with, torus,
 };
+pub use choice::{KernelChoice, select as select_kernel, selected as kernel_selected, solidcore_selected};
 pub use clearance::{Clearance, Occupancy};
 pub use coaxial_overlap::{CoaxialOverlap, coaxial_candidate, coaxial_overlap};
 pub use continuity::{

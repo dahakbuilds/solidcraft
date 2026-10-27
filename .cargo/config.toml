@@ -1,2 +1,7 @@
 [alias]
 xtask = "run --package xtask --"
+
+[target.wasm32-unknown-unknown]
+# solidcore's kernel algorithms (subdivision, intersection, filleting) recurse legitimately and
+# wasm has no stack guard page; link the web app with 8 MiB of stack (see solidcore's README).
+rustflags = ["-C", "link-arg=-zstack-size=8388608"]
