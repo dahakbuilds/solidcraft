@@ -3873,7 +3873,7 @@ impl Document {
 
     /// Evaluate the retained pattern inputs before solving its associative relations.
     pub fn apply_pattern_values(&self, vals: &std::collections::BTreeMap<String, expr::Value>, sk: &mut Sketch) -> Result<()> {
-        use solidcraft_sketch::SketchPatternKind;
+        use solidcraft_sketch::{MAX_PATTERN_COPIES, SketchPatternKind};
         self.apply_pattern_quantities(vals, sk)?;
         for index in 0..sk.patterns.len() {
             let Some(pattern) = sk.patterns.get(index) else { continue };
@@ -3887,8 +3887,8 @@ impl Document {
                 };
                 let value = crate::eval::val(vals, expression, unit).map_err(|e| DocError::Expr(format!("pattern {} `{key}`: {e}", pattern.id)))?;
                 let count = || -> Result<usize> {
-                    if !(1.0..=500.0).contains(&value) || value.fract() != 0.0 {
-                        return Err(DocError::Invalid(format!("pattern `{key}` must be a positive integer from 1 to 500")));
+                    if !(1.0..=MAX_PATTERN_COPIES as f64).contains(&value) || value.fract() != 0.0 {
+                        return Err(DocError::Invalid(format!("pattern `{key}` must be a positive integer from 1 to {MAX_PATTERN_COPIES}")));
                     }
                     Ok(value as usize)
                 };
