@@ -312,8 +312,9 @@ pub fn tool_definitions() -> Vec<Value> {
             "Compare the model's outline with the part in a reference picture — a concept render, a product photo, one view off a design board. \
              The model's outline is `inspect.silhouette` from `view` (default front), `camera` and `bodies`; the picture's part is found by growing \
              the background in from the border, so a backdrop's gradual shading stays background. `reference` is a PNG or JPEG inside the server's \
-             folders. `crop` takes one view off a board: [x, y, w, h] in pixels, or fractions of the picture when all four are 0..1. `fit` names \
-             the dimension(s) the two share (\"width\", \"height\", \"both\", the default). Returns as text the overlap (0..1) and the model's top, \
+             folders. `crop_px` / `crop_fraction` take one view off a board: [x, y, w, h] in pixels or as fractions 0..1 of the picture. `fit` names \
+             the dimension the scale comes from (\"width\", \"height\", \"both\"; default \"width\") — one uniform scale, never stretched per axis; \
+             \"both\" scales by width and reports `aspect_mismatch` when the shapes differ. Returns as text the overlap (0..1) and the model's top, \
              bottom, left and right edges against the picture's in mm at nine stations (positive where the model reaches past the picture), and as \
              an image the overlay PNG: model red, picture blue.",
             obj(
@@ -322,8 +323,9 @@ pub fn tool_definitions() -> Vec<Value> {
                     "view": string("Standard view (front, top, right, iso, ...) the picture is seen from (default front)"),
                     "camera": {"type": "object", "description": "Look from this camera instead: {target: [x,y,z], yaw, pitch, distance, fov?} (radians, mm; as view.apply). A photo taken in perspective gets an fov"},
                     "bodies": {"type": "array", "items": {"type": "string"}, "description": "Body names to outline (default: the visible bodies)"},
-                    "crop": {"type": "array", "items": {"type": "number"}, "description": "[x, y, w, h]: pixels, or fractions of the picture when all four are 0..1"},
-                    "fit": {"type": "string", "enum": ["width", "height", "both"], "description": "The dimension(s) the model and the picture share; the scale comes from them (default both)"},
+                    "crop_px": {"type": "array", "items": {"type": "number"}, "description": "[x, y, w, h] in pixels"},
+                    "crop_fraction": {"type": "array", "items": {"type": "number"}, "description": "[x, y, w, h] as fractions 0..1 of the picture"},
+                    "fit": {"type": "string", "enum": ["width", "height", "both"], "description": "The dimension the one uniform scale comes from (default width); both scales by width and reports aspect_mismatch"},
                     "rows": {"type": "integer", "description": "The model outline's height in pixels (default 240)"},
                 }),
                 &["reference"],
@@ -972,7 +974,7 @@ fn batch_step(step: &Value) -> Result<(String, Value, Option<Narrow>), String> {
         },
         "compare_picture" => {
             // A batch step gets the numbers; the overlay PNG would be a base64 blob in text.
-            let mut p = pick(a, &["reference", "view", "camera", "bodies", "crop", "fit", "rows"]);
+            let mut p = pick(a, &["reference", "view", "camera", "bodies", "crop_px", "crop_fraction", "fit", "rows"]);
             if let Some(obj) = p.as_object_mut() {
                 obj.entry("overlay".to_string()).or_insert(json!(false));
             }
@@ -1767,7 +1769,7 @@ fn screenshot(b: &mut dyn Backend, a: &Map<String, Value>) -> Value {
 /// `compare_picture`: run the engine comparison and hand the overlay PNG back as an MCP
 /// image block, the numbers as text — an agent sees the picture, not a base64 blob.
 fn compare_picture(b: &mut dyn Backend, a: &Map<String, Value>) -> Value {
-    let mut params = pick(a, &["reference", "view", "camera", "bodies", "crop", "fit", "rows"]);
+    let mut params = pick(a, &["reference", "view", "camera", "bodies", "crop_px", "crop_fraction", "fit", "rows"]);
     params["overlay"] = json!(true);
     match exec(b, "inspect.compare_picture", params) {
         Ok(v) => {

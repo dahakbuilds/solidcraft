@@ -22,11 +22,18 @@ fn box_body(s: &mut Session, name: &str, x1: f64, y1: f64, z: f64) {
 
 /// A PNG whose pixels come from `paint`.
 fn png(w: usize, h: usize, paint: impl Fn(usize, usize) -> [u8; 3]) -> Vec<u8> {
+    png_rgba(w, h, |x, y| {
+        let [r, g, b] = paint(x, y);
+        [r, g, b, 255]
+    })
+}
+
+/// A PNG with alpha, whose pixels come from `paint`.
+fn png_rgba(w: usize, h: usize, paint: impl Fn(usize, usize) -> [u8; 4]) -> Vec<u8> {
     let mut img = image::RgbaImage::new(w as u32, h as u32);
     for y in 0..h {
         for x in 0..w {
-            let [r, g, b] = paint(x, y);
-            img.put_pixel(x as u32, y as u32, image::Rgba([r, g, b, 255]));
+            img.put_pixel(x as u32, y as u32, image::Rgba(paint(x, y)));
         }
     }
     let mut out = Cursor::new(Vec::new());
@@ -77,7 +84,7 @@ fn near(v: Option<f64>, want: f64, tol: f64) -> bool {
 fn a_matching_picture_scores_high_with_flat_edges() {
     let mut s = Session::default();
     box_body(&mut s, "Box", 20.0, 10.0, 30.0); // front view: 20 wide, 30 tall
-    let path = reference("match.png", &rect_picture(200, 300, 20, 20, 180, 280));
+    let path = reference("match.png", &rect_picture(200, 280, 20, 20, 180, 260));
     let out = run(&mut s, "inspect.compare_picture", json!({"reference": path, "view": "front"}));
     assert!(out["overlap"].as_f64().unwrap() > 0.95, "overlap {}", out["overlap"]);
     for side in edges(&out) {
@@ -92,16 +99,16 @@ fn a_matching_picture_scores_high_with_flat_edges() {
 fn a_step_in_the_bottom_edge_shows_up_in_mm() {
     let mut s = Session::default();
     box_body(&mut s, "Box", 20.0, 10.0, 30.0);
-    // The aligned picture: a plain part 160 x 260 px.
-    let aligned_path = reference("aligned.png", &rect_picture(200, 300, 20, 20, 180, 280));
+    // The aligned picture: a plain part 160 x 240 px — the model's own shape at 8 px per mm.
+    let aligned_path = reference("aligned.png", &rect_picture(200, 280, 20, 20, 180, 260));
     let aligned = run(&mut s, "inspect.compare_picture", json!({"reference": aligned_path, "view": "front"}));
     // The stepped picture: over its right half the part's bottom edge sits 35 px higher.
-    // fit=both scales the model's 30 mm to the part's 260 px, so 35 px is ~4.04 mm of the
-    // model reaching past the picture.
+    // The width fit gives 8 px per mm, so 35 px is 4.375 mm of the model reaching past
+    // the picture.
     let stepped_path = reference(
         "stepped.png",
-        &png(200, 300, |x, y| {
-            let bottom = if x >= 100 { 245 } else { 280 };
+        &png(200, 280, |x, y| {
+            let bottom = if x >= 100 { 225 } else { 260 };
             if (20..180).contains(&x) && (20..bottom).contains(&y) { [255, 255, 255] } else { [200, 200, 200] }
         }),
     );
@@ -117,9 +124,53 @@ fn a_step_in_the_bottom_edge_shows_up_in_mm() {
         assert!(near(*e, 0.0, 0.6), "step bottom left {e:?}");
     }
     for e in step.iter().skip(4) {
-        assert!(near(*e, 4.04, 0.6), "step bottom right {e:?}");
+        assert!(near(*e, 4.375, 0.6), "step bottom right {e:?}");
     }
     assert!(stepped["overlap"].as_f64().unwrap() < aligned["overlap"].as_f64().unwrap());
+}
+
+/// #1486's example, pinned: `examples/bracket.json` as it is (upright 30 mm) against the
+/// same bracket at 40 mm, both from the front, scaled by the 40 mm arm they share.
+/// The issue's prototype numbers: overlap 0.865, bottom −9.9 mm at the upright (6 % across),
+/// 0.0 mm everywhere else.
+#[test]
+fn the_issue_bracket_pins_overlap_and_the_short_upright() {
+    let mut s = Session::default();
+    // The bracket profile of examples/bracket.json: a 40 x 6 arm with a 6-wide upright to
+    // 30 mm, on XZ so the front view shows the upright hanging below the arm.
+    run(&mut s, "sketch.create", json!({"plane": "XZ", "name": "Profile"}));
+    run(&mut s, "sketch.line", json!({"points": [[0, 0], [40, 0], [40, 6], [6, 6], [6, 30], [0, 30]], "closed": true}));
+    run(&mut s, "sketch.finish", json!({}));
+    run(&mut s, "solid.extrude", json!({"distance": 20.0, "direction": "negative", "body_name": "Bracket"}));
+    // The same bracket with the upright at 40 mm, at 20 px per mm: an 800 x 800 part, the
+    // 800 x 120 arm on top and the 120-wide upright down to 800, on a grey margin.
+    let path = reference(
+        "bracket.png",
+        &png(840, 840, |x, y| {
+            let part = ((20..820).contains(&x) && (20..140).contains(&y)) || ((20..140).contains(&x) && (20..820).contains(&y));
+            if part { [255, 255, 255] } else { [200, 200, 200] }
+        }),
+    );
+    let out = run(&mut s, "inspect.compare_picture", json!({"reference": path, "view": "front", "rows": 480, "overlay": false}));
+    let overlap = out["overlap"].as_f64().unwrap();
+    assert!((overlap - 0.865).abs() <= 0.01, "overlap {overlap}");
+    let e = edges(&out);
+    // The upright is the first station (x = 80 of 800): the model is 10 mm short there.
+    assert!(near(e[1][0], -10.0, 0.2), "bottom at the upright {:?}", e[1][0]);
+    for side in 1..9 {
+        assert!(near(e[1][side], 0.0, 0.1), "bottom elsewhere {:?}", e[1]);
+    }
+    for i in 0..9 {
+        assert!(near(e[0][i], 0.0, 0.1), "top {:?}", e[0]);
+        // Below the model's 30 mm upright the model has no row to answer with: those
+        // side stations are null, as documented.
+        for side in [e[2].clone(), e[3].clone()] {
+            match side[i] {
+                None => {}
+                Some(v) => assert!(v.abs() <= 0.1, "side {side:?}"),
+            }
+        }
+    }
 }
 
 #[test]
@@ -156,17 +207,62 @@ fn crop_takes_one_part_off_the_board() {
     let path = reference(
         "two.png",
         &png(400, 300, |x, y| {
-            let left = (20..180).contains(&x) && (20..280).contains(&y);
+            let left = (20..180).contains(&x) && (20..260).contains(&y);
             let right = (210..390).contains(&x) && (5..295).contains(&y) && !((300..390).contains(&x) && (100..200).contains(&y));
             if left || right { [255, 255, 255] } else { [200, 200, 200] }
         }),
     );
-    let out = run(&mut s, "inspect.compare_picture", json!({"reference": path.clone(), "view": "front", "crop": [0.0, 0.0, 0.5, 1.0]}));
-    // The picture size is the found part's tight frame: the left rectangle is 160 x 260 px.
+    let out = run(&mut s, "inspect.compare_picture", json!({"reference": path.clone(), "view": "front", "crop_fraction": [0.0, 0.0, 0.5, 1.0]}));
+    // The picture size is the found part's tight frame: the left rectangle is 160 x 240 px.
     assert_eq!(out["picture"]["width"], 160);
     assert!(out["overlap"].as_f64().unwrap() > 0.95, "overlap {}", out["overlap"]);
     let whole = run(&mut s, "inspect.compare_picture", json!({"reference": path, "view": "front"}));
     assert!(whole["overlap"].as_f64().unwrap() < out["overlap"].as_f64().unwrap());
+}
+
+#[test]
+fn crop_px_has_explicit_units() {
+    let mut s = Session::default();
+    box_body(&mut s, "Box", 20.0, 10.0, 30.0);
+    let path = reference("px.png", &rect_picture(200, 280, 20, 20, 180, 260));
+    // Pixels mean pixels: [10, 10, 180, 260] keeps the part with a margin, and a crop of
+    // one pixel is one pixel, not the whole picture.
+    let out = run(&mut s, "inspect.compare_picture", json!({"reference": path.clone(), "view": "front", "crop_px": [10, 10, 180, 260]}));
+    assert!(out["overlap"].as_f64().unwrap() > 0.95, "overlap {}", out["overlap"]);
+    let dot = reference("dot.png", &rect_picture(200, 280, 100, 100, 101, 101));
+    assert!(
+        s.execute("inspect.compare_picture", &json!({"reference": dot, "crop_px": [0, 0, 1, 1]})).unwrap_err().to_string().contains("no part found")
+    );
+    // Giving both spellings is refused, and so is a fraction above 1.
+    assert!(
+        s.execute("inspect.compare_picture", &json!({"reference": path, "crop_px": [0, 0, 10, 10], "crop_fraction": [0.0, 0.0, 0.1, 0.1]}))
+            .unwrap_err()
+            .to_string()
+            .contains("not both")
+    );
+    assert!(
+        s.execute("inspect.compare_picture", &json!({"reference": path, "crop_fraction": [0.0, 0.0, 1.5, 1.0]}))
+            .unwrap_err()
+            .to_string()
+            .contains("0..1")
+    );
+}
+
+#[test]
+fn fit_both_never_stretches_the_axes_apart() {
+    let mut s = Session::default();
+    box_body(&mut s, "Box", 20.0, 10.0, 30.0); // front view: 20 wide, 30 tall
+    // A 20 x 20 mm square picture of a 20 x 30 mm model: `both` used to stretch the model
+    // to the square and report a perfect 1.000 with every edge at 0.0 mm. One uniform
+    // scale (from the width they share) leaves the 10 mm of overhang visible instead.
+    let path = reference("square.png", &rect_picture(220, 220, 10, 10, 210, 210));
+    let both = run(&mut s, "inspect.compare_picture", json!({"reference": path.clone(), "view": "front", "fit": "both", "overlay": false}));
+    assert!((both["overlap"].as_f64().unwrap() - 200.0 / 300.0).abs() < 0.02, "overlap {}", both["overlap"]);
+    assert!((both["aspect_mismatch"].as_f64().unwrap() - 1.5).abs() < 0.01, "aspect_mismatch {}", both["aspect_mismatch"]);
+    // And `width` is the default: leaving `fit` out answers the same as naming it.
+    let plain = run(&mut s, "inspect.compare_picture", json!({"reference": path, "view": "front", "overlay": false}));
+    assert_eq!(plain["overlap"], both["overlap"]);
+    assert_eq!(plain["edges"], both["edges"]);
 }
 
 #[test]
@@ -189,6 +285,78 @@ fn fit_width_keeps_the_models_aspect() {
 }
 
 #[test]
+fn a_narrow_model_fits_the_grid_not_the_memory() {
+    let mut s = Session::default();
+    // A 2 mm x 1000 mm sliver seen from the front: fitted by width against a 1024-wide
+    // picture it used to become 1024 x 524 288 booleans. The fitted model now takes the
+    // same MAX_GRID cap as the picture, so the comparison just runs.
+    box_body(&mut s, "Sliver", 2.0, 1.0, 1000.0);
+    let path = reference("sliver.png", &rect_picture(1030, 1010, 3, 5, 1027, 1005));
+    let out = run(&mut s, "inspect.compare_picture", json!({"reference": path, "view": "front", "overlay": false}));
+    // The shapes are nothing alike (the sliver is 1:500, the picture 1024:1000), and the
+    // capped model grid keeps the overlap small — what matters is that it ran at all.
+    assert!(out["overlap"].as_f64().unwrap() < 0.1, "overlap {}", out["overlap"]);
+}
+
+#[test]
+fn ordinary_pictures_keep_their_part() {
+    let mut s = Session::default();
+    box_body(&mut s, "Box", 20.0, 10.0, 30.0);
+    // A part touching the picture's border: only border pixels close to the border's main
+    // colour seed the background, so the part's own border pixels do not flood it.
+    let border = reference("border.png", &rect_picture(200, 280, 0, 20, 160, 260));
+    let out = run(&mut s, "inspect.compare_picture", json!({"reference": border, "view": "front"}));
+    assert!(out["overlap"].as_f64().unwrap() > 0.95, "border overlap {}", out["overlap"]);
+    // A white part on a (245, 245, 245) studio backdrop: the step of 10 is below BG_STEP,
+    // but the stricter retry separates it.
+    let studio = reference(
+        "studio.png",
+        &png(200, 280, |x, y| if (20..180).contains(&x) && (20..260).contains(&y) { [255, 255, 255] } else { [245, 245, 245] }),
+    );
+    let out = run(&mut s, "inspect.compare_picture", json!({"reference": studio, "view": "front"}));
+    assert!(out["overlap"].as_f64().unwrap() > 0.95, "studio overlap {}", out["overlap"]);
+    // A part on a transparent background: alpha below 128 is background.
+    let alpha = reference(
+        "alpha.png",
+        &png_rgba(200, 280, |x, y| if (20..180).contains(&x) && (20..260).contains(&y) { [90, 90, 90, 255] } else { [0, 0, 0, 0] }),
+    );
+    let out = run(&mut s, "inspect.compare_picture", json!({"reference": alpha, "view": "front"}));
+    assert!(out["overlap"].as_f64().unwrap() > 0.95, "alpha overlap {}", out["overlap"]);
+}
+
+#[test]
+fn a_through_hole_counts_the_same_on_both_sides() {
+    let mut s = Session::default();
+    // A 200 x 200 mm plate with a 100 x 100 mm through-hole, against a picture of itself
+    // at 1 px per mm, seen from the top (the hole goes through the plate's faces). The
+    // picture's hole is filled by the border flood; the model's hole now gets the same
+    // rule, so the plate scores ~1.0 instead of 0.75.
+    run(&mut s, "sketch.create", json!({"plane": "XY", "name": "Plate"}));
+    run(&mut s, "sketch.rectangle.two_point", json!({"p0": [0.0, 0.0], "p1": [200.0, 200.0]}));
+    run(&mut s, "sketch.finish", json!({}));
+    run(&mut s, "solid.extrude", json!({"sketch": "Plate", "distance": 10.0, "operation": "new_body", "body_name": "Plate"}));
+    run(&mut s, "sketch.create", json!({"plane": "XY", "name": "Hole"}));
+    run(&mut s, "sketch.rectangle.two_point", json!({"p0": [50.0, 50.0], "p1": [150.0, 150.0]}));
+    run(&mut s, "sketch.finish", json!({}));
+    run(&mut s, "solid.extrude", json!({"sketch": "Hole", "distance": 20.0, "operation": "cut"}));
+    let path = reference(
+        "plate.png",
+        &png(220, 220, |x, y| {
+            let plate = (10..210).contains(&x) && (10..210).contains(&y);
+            let hole = (60..160).contains(&x) && (60..160).contains(&y);
+            if plate && !hole { [255, 255, 255] } else { [200, 200, 200] }
+        }),
+    );
+    let out = run(&mut s, "inspect.compare_picture", json!({"reference": path, "view": "top", "overlay": false}));
+    assert!(out["overlap"].as_f64().unwrap() > 0.98, "overlap {}", out["overlap"]);
+    for side in edges(&out) {
+        for e in side {
+            assert!(near(e, 0.0, 0.6), "edge {e:?}");
+        }
+    }
+}
+
+#[test]
 fn hostile_and_empty_references_fail_cleanly() {
     let mut s = Session::default();
     box_body(&mut s, "Box", 20.0, 10.0, 30.0);
@@ -196,13 +364,16 @@ fn hostile_and_empty_references_fail_cleanly() {
     // Not an image at all.
     let text = reference("not.png", b"just text, not a picture");
     assert!(s.execute("inspect.compare_picture", &json!({"reference": text})).unwrap_err().to_string().contains("PNG or a JPEG"));
-    // A uniform picture: the background eats everything.
+    // A uniform picture: the background eats everything, and says so.
     let flat = reference("flat.png", &png(64, 64, |_, _| [200, 200, 200]));
     assert!(s.execute("inspect.compare_picture", &json!({"reference": flat})).unwrap_err().to_string().contains("no part found"));
+    // A fully transparent picture: alpha says there is nothing there.
+    let clear = reference("clear.png", &png_rgba(64, 64, |_, _| [0, 0, 0, 0]));
+    assert!(s.execute("inspect.compare_picture", &json!({"reference": clear})).unwrap_err().to_string().contains("transparent"));
     // A missing file.
     assert!(s.execute("inspect.compare_picture", &json!({"reference": "no-such-file.png"})).is_err());
     // A bad fit name.
-    let path = reference("match2.png", &rect_picture(200, 300, 20, 20, 180, 280));
+    let path = reference("match2.png", &rect_picture(200, 280, 20, 20, 180, 260));
     assert!(s.execute("inspect.compare_picture", &json!({"reference": path, "fit": "diagonal"})).is_err());
     // overlay: false leaves the PNG out.
     let out = run(&mut s, "inspect.compare_picture", json!({"reference": path, "view": "front", "overlay": false}));
