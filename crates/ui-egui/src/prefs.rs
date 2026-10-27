@@ -1323,6 +1323,9 @@ preference_settings! {
     look_at_speed: f32 = 1.0, PAGE_NAVIGATION, accept(0.25..=4.0) => enabled_slider(look_at_anim, "Animation speed", 0.5..=3.0, 0.25, |v| format!("{v:.2}×"));
     /// Default modelling orientation: `z` (Z up) or `y` (Y up) (#3).
     up_axis: String = "z".into(), PAGE_DESIGN;
+    /// Which geometry kernel answers modelling operations: `truck` (stable) or `solidcore`
+    /// (experimental; operations it cannot do fall back to truck).
+    kernel: String = "truck".into(), PAGE_DESIGN;
     /// After a STEP or IGES file opens, offer to stand a Y-up part up (`stand_up`).
     offer_stand_up: bool = true, PAGE_DESIGN => check("Offer to stand up Y-up files", "After a STEP or IGES file opens with Z up, offer a quarter turn about X");
     /// How the offer is made for a file whose header names no program known to save Y up: a note
@@ -2209,6 +2212,12 @@ pub fn apply(app: &mut SolveApp, ctx: &egui::Context) {
         up_axis_changed(app);
     }
     follow_view_fov(app);
+    // The geometry kernel follows the preference (dialog, ui.prefs or loaded). Cheap: an
+    // atomic read and compare; a `SOLIDCRAFT_KERNEL` environment override keeps winning.
+    let want_kernel = solidcraft_engine::kernel::KernelChoice::from_id(&app.preferences.kernel).unwrap_or_default();
+    if solidcraft_engine::kernel::kernel_selected() != want_kernel {
+        solidcraft_engine::kernel::select_kernel(want_kernel);
+    }
     if app.preferences.theme == "system"
         && let Some(dark) = system_dark(app, ctx)
     {
@@ -2672,6 +2681,12 @@ fn up_axis_changed(app: &mut SolveApp) {
     if app.ui.up_axis != up || app.cam.up != up {
         app.set_up_axis(up);
     }
+}
+
+/// The geometry kernel preference changed: route operations through it at once
+/// ([`apply`] keeps it in step for every other path; a `SOLIDCRAFT_KERNEL` override wins).
+fn kernel_changed(app: &mut SolveApp) {
+    solidcraft_engine::kernel::select_kernel(solidcraft_engine::kernel::KernelChoice::from_id(&app.preferences.kernel).unwrap_or_default());
 }
 
 /// One page of the dialog. Inputs share the kit's aligned rows and tokenised controls.
@@ -4095,6 +4110,9 @@ fn prepare_preferences(
     if (!THEMES.iter().any(|(id, _)| *id == new.theme) && file.is_none()) || !["z", "y"].contains(&new.up_axis.as_str()) {
         return Err("`theme` must be dark, light, system or a theme's id (see `theme_ids`) and `up_axis` z or y".into());
     }
+    if solidcraft_engine::kernel::KernelChoice::from_id(&new.kernel).is_none() {
+        return Err("`kernel` must be truck or solidcore".into());
+    }
     if new.custom_themes.len() > crate::theme_files::MAX_CUSTOM || new.custom_themes.iter().any(|t| t.colors.len() > crate::theme_files::MAX_COLORS) {
         return Err(format!("at most {} imported themes of {} colours each", crate::theme_files::MAX_CUSTOM, crate::theme_files::MAX_COLORS));
     }
@@ -4679,6 +4697,24 @@ mod tests {
         let preview = crate::scenario::rect_of("prefs:navbar:preview").unwrap();
         let body = crate::scenario::rect_of("prefs:page_body").unwrap();
         assert!(body.contains(preview.center()), "the route reopens and scrolls to the section");
+    }
+
+    #[test]
+    fn the_geometry_kernel_choice_defaults_round_trips_and_reads_tolerantly() {
+        use solidcraft_engine::kernel::KernelChoice;
+        assert_eq!(serde_json::from_value::<super::Prefs>(serde_json::json!({})).unwrap().kernel, "truck");
+        for id in ["truck", "solidcore"] {
+            let prefs = super::Prefs { kernel: id.into(), ..Default::default() };
+            let again: super::Prefs = serde_json::from_value(serde_json::to_value(&prefs).unwrap()).unwrap();
+            assert_eq!(again.kernel, id);
+            assert!(KernelChoice::from_id(id).is_some(), "{id}");
+        }
+        // An unknown kernel from a newer build survives reading (the field is a plain string)
+        // but behaves as the default everywhere: `apply` and `kernel_changed` map it through
+        // `KernelChoice::from_id(...).unwrap_or_default()`, and the control channel rejects it.
+        assert_eq!(super::lenient(&serde_json::json!({ "kernel": "occt" })).kernel, "occt");
+        assert_eq!(KernelChoice::from_id("occt").unwrap_or_default(), KernelChoice::Truck);
+        assert!(KernelChoice::from_id("occt").is_none());
     }
 
     #[test]
