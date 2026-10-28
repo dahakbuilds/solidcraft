@@ -264,7 +264,6 @@ mod tests {
         "sketch.line3d",
         "sketch.mirror",
         "sketch.move",
-        "sketch.move3d",
         "sketch.offset",
         "sketch.paste",
         "sketch.pattern.circular",
