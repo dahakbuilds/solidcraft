@@ -496,7 +496,9 @@ pub fn commands(app: &SolveApp, k: &Surf, inputs: &[SelInput], extra: &Map<Strin
                 Some(Sel::Axis { name }) => json!(name),
                 // A line of the profile sketch itself keeps the bare id: that is how designs
                 // saved before #6548 store it, and an unchanged edit must not rewrite it.
-                Some(Sel::SketchCurve { id, sketch: Some(named) }) if p.get("sketch") != Some(&json!(*named)) => json!({"sketch": named, "curve": id}),
+                Some(Sel::SketchCurve { id, sketch: Some(named) }) if p.get("sketch") != Some(&json!(*named)) => {
+                    json!({"sketch": named, "curve": id})
+                }
                 Some(Sel::SketchCurve { id, .. }) => json!(id),
                 Some(x) => crate::dialogs::axis_param(app, x)?,
                 None => axis.clone().ok_or("select an axis")?,
