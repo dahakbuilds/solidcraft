@@ -3946,14 +3946,16 @@ fn dialog_commands(app: &SolveApp, d: &Dialog) -> Result<Vec<(String, Value)>, S
         }
         Kind::Revolve { angle, operation, axis: stored_axis } => {
             need(0, "profiles")?;
+            let (sketch, idx) = profiles();
             let axis = match sels(d, 1).first() {
                 Some(Sel::Axis { name }) => json!(name),
-                Some(Sel::SketchCurve { id, sketch: Some(named) }) => json!({"sketch": named, "curve": id}),
+                // A line of the profile sketch itself keeps the bare id: that is how designs
+                // saved before #6548 store it, and an unchanged edit must not rewrite it.
+                Some(Sel::SketchCurve { id, sketch: Some(named) }) if json!(*named) != sketch => json!({"sketch": named, "curve": id}),
                 Some(Sel::SketchCurve { id, .. }) => json!(id),
                 Some(x) => axis_param(app, x)?,
                 None => stored_axis.clone().ok_or("select an axis")?,
             };
-            let (sketch, idx) = profiles();
             let mut p = json!({"axis": axis, "angle": angle, "operation": OPS.get(*operation).copied().unwrap_or("new")});
             // A planar body face revolves like a profile (#2747); profiles win when both are picked.
             let face = sels(d, 0).iter().find_map(|x| match x {
