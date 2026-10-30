@@ -429,7 +429,11 @@ fn a_tight_crop_can_declare_the_box_is_the_part() {
     let path = reference("tight.png", &png(100, 100, |x, _| if x < 85 { [255, 255, 255] } else { [200, 200, 200] }));
     let flood = run(&mut s, "inspect.compare_picture", json!({"reference": path.clone(), "view": "front", "overlay": false}));
     assert!(flood["overlap"].as_f64().unwrap() < 0.5, "the flood keeps the strip: overlap {}", flood["overlap"]);
-    let out = run(&mut s, "inspect.compare_picture", json!({"reference": path, "view": "front", "crop_px": [0, 0, 85, 100], "part_fills_crop": true, "overlay": false}));
+    let out = run(
+        &mut s,
+        "inspect.compare_picture",
+        json!({"reference": path, "view": "front", "crop_px": [0, 0, 85, 100], "part_fills_crop": true, "overlay": false}),
+    );
     assert!(out["overlap"].as_f64().unwrap() > 0.95, "overlap {}", out["overlap"]);
     // 17 mm over the 85 px the part fills: 0.2 mm/px.
     assert!((out["mm_per_px"]["x"].as_f64().unwrap() - 0.2).abs() < 0.01, "mm_per_px {}", out["mm_per_px"]);
@@ -449,7 +453,10 @@ fn a_tight_crop_can_declare_the_box_is_the_part() {
 /// as "matches".
 #[test]
 fn the_compare_is_outline_only_holes_are_not_compared() {
-    assert!(crate::cmd::compare_picture::COMMANDS[0].params.contains("holes are not compared"), "the command description must say the compare is outline only");
+    assert!(
+        crate::cmd::compare_picture::COMMANDS[0].params.contains("holes are not compared"),
+        "the command description must say the compare is outline only"
+    );
     let mut s = Session::default();
     // A solid 200 x 200 mm plate against a picture of a plate with a 100 x 100 through-hole.
     box_body(&mut s, "Plate", 200.0, 10.0, 200.0);
