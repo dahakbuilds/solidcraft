@@ -26,8 +26,12 @@ const BG_STEP: u16 = 12;
 /// When the first pass finds no part, the flood retries at this stricter step: a white part
 /// on a (245, 245, 245) studio backdrop is a step of 10, which BG_STEP lets through.
 const BG_STEP_STRICT: u16 = 4;
-/// A picture that uses alpha: a pixel below this alpha is background.
+/// A picture whose border is mostly transparent: a pixel below this alpha is see-through.
 const ALPHA_BG: u8 = 128;
+/// The global retry's backdrop: a pixel within this of the border's main colour is
+/// background. A light JPEG (white on (245, 245, 245) at quality 75) blurs the step at the
+/// part's outline below any local limit, so that pass compares to the backdrop's colour.
+const BG_NEAR: u16 = 8;
 /// Stations per side for the edge offsets.
 const STATIONS: usize = 9;
 
@@ -35,12 +39,14 @@ const STATIONS: usize = 9;
 pub static COMMANDS: &[CommandSpec] = &[CommandSpec::new(CMD, "Compare Picture", run).noundo().icon("compare").params(
     "reference: path to a PNG or JPEG the model should match; view?/camera?/bodies?/rows? as inspect.silhouette; \
      crop_px?: [x, y, w, h] in pixels, or crop_fraction?: [x, y, w, h] as fractions 0..1 of the picture \
-     (to take one view off a board); \
+     (to take one view off a board); part_fills_crop?: false — with true the crop box is the part itself \
+     and no background search runs, for a crop that tightly frames the part; \
      fit?: \"width\" | \"height\" | \"both\" (default \"width\"): one uniform scale, taken from the named \
      dimension (\"both\" claims both and scales by width, reporting aspect_mismatch when the shapes differ); \
      overlay?: false leaves the overlay PNG out → overlap (0..1), edges: top|bottom|left|right in mm at nine stations \
      (positive where the model reaches past the picture, null where a station misses one of the two), the grid and its \
-     mm_per_px, and overlay_png (red model, blue picture) as base64 PNG",
+     mm_per_px, and overlay_png (red model, blue picture) as base64 PNG. The compare is outline only: \
+     holes are not compared — both the picture's and the model's holes are filled",
 )];
 
 fn run(s: &mut Session, p: &Value) -> Result<Value> {
@@ -60,6 +66,7 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
         Some(_) => return Err(bad(CMD, "`fit` must be a string")),
     };
     let overlay = p.get("overlay").map(|v| v.as_bool().unwrap_or(false)).unwrap_or(true);
+    let part_fills_crop = p.get("part_fills_crop").and_then(Value::as_bool).unwrap_or(false);
 
     // The model side: the same outline inspect.silhouette returns, as filled rows.
     let camera = silhouette::camera(p)?;
@@ -71,7 +78,11 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
     let bytes = solidcraft_io::vfs::read(reference, MAX_REFERENCE_BYTES).map_err(|e| bad(CMD, format!("{reference}: {e}")))?;
     let img = decode(&bytes)?;
     let img = apply_crop(img, p.get("crop_px"), p.get("crop_fraction"))?;
-    let picture = find_part(&img).map_err(|reason| bad(CMD, format!("no part found in the picture: {reason}")))?;
+    let picture = if part_fills_crop {
+        part_from_box(&img).map_err(|reason| bad(CMD, format!("the crop cannot be the part: {reason}")))?
+    } else {
+        find_part(&img).map_err(|reason| bad(CMD, format!("no part found in the picture: {reason}")))?
+    };
 
     // Fit the model outline to the picture's scale, then slide it to the best overlap.
     let (mw, mh, mmpp_x, mmpp_y) = fit_model(&model, picture.width, picture.height, fit);
@@ -200,12 +211,16 @@ fn crop_to(img: image::RgbaImage, x: usize, y: usize, cw: usize, ch: usize, w: u
     Ok(image::imageops::crop_imm(&img, x as u32, y as u32, cw as u32, ch as u32).to_image())
 }
 
-/// Find the part. When the picture uses alpha, opaque pixels are the part. Otherwise grow
-/// the background in from the border through small colour steps only — seeded from the
-/// border pixels close to the border's main colour, so a part touching the border is not
-/// eaten by its own edge — keep what the background did not reach, and keep the largest
-/// 4-connected piece. On a retry the step is stricter, so a white part on a (245, 245, 245)
-/// backdrop (a step of 10) still separates. Says which happened when no part is found.
+/// Find the part. Alpha decides only when the backdrop really is transparent — most border
+/// pixels see-through — so one stray translucent pixel cannot switch the read; then any ink
+/// is part, so a part drawn at a faint alpha survives. Otherwise grow the background in from
+/// the border through small colour steps only — seeded from the border pixels close to the
+/// border's main colour, so a part touching the border is not eaten by its own edge — keep
+/// what the background did not reach, and keep the largest 4-connected piece. On a retry the
+/// step is stricter, so a white part on a (245, 245, 245) backdrop (a step of 10) still
+/// separates; on a second retry the backdrop is taken globally — within BG_NEAR of the
+/// border's main colour — because a light JPEG blurs the step at the part's outline below
+/// any local limit. Says which happened when no part is found.
 fn find_part(img: &image::RgbaImage) -> std::result::Result<Part, String> {
     let (w, h) = (img.width() as usize, img.height() as usize);
     if w < 2 || h < 2 {
@@ -217,19 +232,49 @@ fn find_part(img: &image::RgbaImage) -> std::result::Result<Part, String> {
     };
     let step = |a: [u16; 3], b: [u16; 3]| (a[0].abs_diff(b[0])).max(a[1].abs_diff(b[1])).max(a[2].abs_diff(b[2]));
 
-    let uses_alpha = img.pixels().any(|p| p[3] < 255);
+    // Alpha decides only when the border is mostly see-through: a single backdrop pixel at
+    // alpha 254 in an otherwise opaque picture must not turn the whole read into alpha.
+    let mut border = 0usize;
+    let mut see_through = 0usize;
+    for x in 0..w {
+        for y in [0, h - 1] {
+            border += 1;
+            if img.get_pixel(x as u32, y as u32)[3] < ALPHA_BG {
+                see_through += 1;
+            }
+        }
+    }
+    for y in 0..h {
+        for x in [0, w - 1] {
+            border += 1;
+            if img.get_pixel(x as u32, y as u32)[3] < ALPHA_BG {
+                see_through += 1;
+            }
+        }
+    }
+    let uses_alpha = see_through * 2 > border;
+
     let (part, too_small): (Vec<bool>, String) = if uses_alpha {
-        let mask: Vec<bool> = img.pixels().map(|p| p[3] >= ALPHA_BG).collect();
-        (mask, "the picture is transparent: no pixel is opaque enough to be a part".to_string())
+        let mask: Vec<bool> = img.pixels().map(|p| p[3] > 0).collect();
+        (mask, "the picture is transparent: no pixel holds any ink".to_string())
     } else {
         let bg = flood_background(&px, w, h, BG_STEP, &step);
         let mask: Vec<bool> = (0..w * h).map(|i| !bg[i]).collect();
-        if largest_piece(&mask, w, h).len() < 16 {
+        if largest_piece(&mask, w, h).len() >= 16 {
+            (mask, "the picture holds no piece big enough to be a part".to_string())
+        } else {
             let bg = flood_background(&px, w, h, BG_STEP_STRICT, &step);
             let mask: Vec<bool> = (0..w * h).map(|i| !bg[i]).collect();
-            (mask, "the background grew from the border over the whole picture, even with a stricter colour step: the part's colour is too close to the backdrop's".to_string())
-        } else {
-            (mask, "the picture holds no piece big enough to be a part".to_string())
+            if largest_piece(&mask, w, h).len() >= 16 {
+                (mask, "the picture holds no piece big enough to be a part".to_string())
+            } else {
+                // The local step fails on a light JPEG: the codec blurs the 10-level step
+                // at the part's outline into steps of a few levels each, under any limit.
+                // Take the backdrop globally instead: near the border's main colour.
+                let main = border_main_colour(&px, w, h);
+                let mask: Vec<bool> = (0..w * h).map(|i| step(main, px(i % w, i / w)) > BG_NEAR).collect();
+                (mask, "the background grew from the border over the whole picture, even with a stricter colour step: the part's colour is too close to the backdrop's".to_string())
+            }
         }
     };
 
@@ -251,11 +296,21 @@ fn find_part(img: &image::RgbaImage) -> std::result::Result<Part, String> {
     Ok(Part { width: dw, height: dh, mask })
 }
 
-/// The background mask: grown from every border pixel whose colour is close to the border's
-/// main colour, crossing only steps of at most `limit` per channel.
-fn flood_background(px: &impl Fn(usize, usize) -> [u16; 3], w: usize, h: usize, limit: u16, step: &impl Fn([u16; 3], [u16; 3]) -> u16) -> Vec<bool> {
-    // The border's main colour: the border colour it has most of. A part crossing the border
-    // is in the border too, but the backdrop is what most of the border shows.
+/// The crop box is the part itself (`part_fills_crop`): no background search. This is how
+/// one view cropped tight off a board says so — a part touching three sides leaves the
+/// border's main colour the part's own, and the flood would keep the backdrop strip instead.
+fn part_from_box(img: &image::RgbaImage) -> std::result::Result<Part, String> {
+    let (w, h) = (img.width() as usize, img.height() as usize);
+    if w < 2 || h < 2 {
+        return Err("the crop is smaller than 2 x 2 pixels".to_string());
+    }
+    let (dw, dh) = fit_grid(w, h);
+    Ok(Part { width: dw, height: dh, mask: vec![vec![true; dw]; dh] })
+}
+
+/// The border's main colour: the border colour it has most of. A part crossing the border
+/// is in the border too, but the backdrop is what most of the border shows.
+fn border_main_colour(px: &impl Fn(usize, usize) -> [u16; 3], w: usize, h: usize) -> [u16; 3] {
     let mut counts: HashMap<[u16; 3], usize> = HashMap::new();
     for x in 0..w {
         for y in [0, h - 1] {
@@ -267,7 +322,13 @@ fn flood_background(px: &impl Fn(usize, usize) -> [u16; 3], w: usize, h: usize, 
             *counts.entry(px(x, y)).or_default() += 1;
         }
     }
-    let main = counts.into_iter().max_by_key(|(_, n)| *n).map(|(c, _)| c).unwrap_or([0; 3]);
+    counts.into_iter().max_by_key(|(_, n)| *n).map(|(c, _)| c).unwrap_or([0; 3])
+}
+
+/// The background mask: grown from every border pixel whose colour is close to the border's
+/// main colour, crossing only steps of at most `limit` per channel.
+fn flood_background(px: &impl Fn(usize, usize) -> [u16; 3], w: usize, h: usize, limit: u16, step: &impl Fn([u16; 3], [u16; 3]) -> u16) -> Vec<bool> {
+    let main = border_main_colour(px, w, h);
 
     let mut bg = vec![false; w * h];
     let mut queue: VecDeque<(usize, usize)> = VecDeque::new();

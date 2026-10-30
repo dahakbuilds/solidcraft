@@ -42,6 +42,10 @@ fn png_rgba(w: usize, h: usize, paint: impl Fn(usize, usize) -> [u8; 4]) -> Vec<
 }
 
 fn jpeg(w: usize, h: usize, paint: impl Fn(usize, usize) -> [u8; 3]) -> Vec<u8> {
+    jpeg_q(w, h, 90, paint)
+}
+
+fn jpeg_q(w: usize, h: usize, q: u8, paint: impl Fn(usize, usize) -> [u8; 3]) -> Vec<u8> {
     let mut img = image::RgbaImage::new(w as u32, h as u32);
     for y in 0..h {
         for x in 0..w {
@@ -51,7 +55,7 @@ fn jpeg(w: usize, h: usize, paint: impl Fn(usize, usize) -> [u8; 3]) -> Vec<u8> 
     }
     let rgb = image::DynamicImage::ImageRgba8(img).to_rgb8();
     let mut out = Cursor::new(Vec::new());
-    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 90)
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, q)
         .write_image(rgb.as_raw(), w as u32, h as u32, image::ExtendedColorType::Rgb8)
         .unwrap();
     out.into_inner()
@@ -378,4 +382,102 @@ fn hostile_and_empty_references_fail_cleanly() {
     // overlay: false leaves the PNG out.
     let out = run(&mut s, "inspect.compare_picture", json!({"reference": path, "view": "front", "overlay": false}));
     assert!(out.get("overlay_png").is_none());
+}
+
+/// Reviewer re-test case: a 60 x 60 opaque PNG with a white 40 x 40 square and a single
+/// backdrop pixel at alpha 254 used to be read as all part — 1.000 against the 40 x 40
+/// square at 0.067 mm/px instead of 0.1. Alpha now decides only when the border is mostly
+/// see-through, and a part drawn at alpha 100 on a transparent backdrop is still the part.
+#[test]
+fn one_translucent_pixel_does_not_switch_to_alpha() {
+    let mut s = Session::default();
+    box_body(&mut s, "Square", 4.0, 1.0, 4.0); // front view: 4 x 4 mm
+    let path = reference(
+        "speck.png",
+        &png_rgba(60, 60, |x, y| {
+            let alpha = if x == 5 && y == 55 { 254 } else { 255 };
+            let c = if (10..50).contains(&x) && (10..50).contains(&y) { 255u8 } else { 128 };
+            [c, c, c, alpha]
+        }),
+    );
+    let out = run(&mut s, "inspect.compare_picture", json!({"reference": path, "view": "front", "overlay": false}));
+    // The part is the 40 x 40 square: 4 mm over 40 px is 0.1 mm/px, not 4/60 = 0.067.
+    let mmpp = out["mm_per_px"]["x"].as_f64().unwrap();
+    assert!((mmpp - 0.1).abs() < 0.01, "mm_per_px {mmpp}");
+    assert!(out["overlap"].as_f64().unwrap() > 0.9, "overlap {}", out["overlap"]);
+    // A part drawn at alpha 100 on a transparent backdrop is the part, not the background.
+    let faint = reference(
+        "faint.png",
+        &png_rgba(60, 60, |x, y| if (10..50).contains(&x) && (10..50).contains(&y) { [255, 255, 255, 100] } else { [0, 0, 0, 0] }),
+    );
+    let out = run(&mut s, "inspect.compare_picture", json!({"reference": faint, "view": "front", "overlay": false}));
+    assert!(out["overlap"].as_f64().unwrap() > 0.9, "faint overlap {}", out["overlap"]);
+    let mmpp = out["mm_per_px"]["x"].as_f64().unwrap();
+    assert!((mmpp - 0.1).abs() < 0.01, "faint mm_per_px {mmpp}");
+}
+
+/// Reviewer re-test case: one view cropped off a board — the part touches three sides and
+/// takes 270 of the 400 border samples, so the border's main colour is the part's own and
+/// the flood eats it: the 15 px backdrop strip becomes "the part" and an exact model scores
+/// 0.18. `part_fills_crop: true` says the crop box is the part: no flood, exact model ~1.0.
+#[test]
+fn a_tight_crop_can_declare_the_box_is_the_part() {
+    let mut s = Session::default();
+    box_body(&mut s, "Box", 17.0, 10.0, 20.0); // front view: 17 wide, 20 tall
+    // The tight crop: the white part fills x 0..85 of a 100 x 100 box, touching three
+    // sides — 270 of the border samples — with a 15 px backdrop strip down the right.
+    let path = reference("tight.png", &png(100, 100, |x, _| if x < 85 { [255, 255, 255] } else { [200, 200, 200] }));
+    let flood = run(&mut s, "inspect.compare_picture", json!({"reference": path.clone(), "view": "front", "overlay": false}));
+    assert!(flood["overlap"].as_f64().unwrap() < 0.5, "the flood keeps the strip: overlap {}", flood["overlap"]);
+    let out = run(&mut s, "inspect.compare_picture", json!({"reference": path, "view": "front", "crop_px": [0, 0, 85, 100], "part_fills_crop": true, "overlay": false}));
+    assert!(out["overlap"].as_f64().unwrap() > 0.95, "overlap {}", out["overlap"]);
+    // 17 mm over the 85 px the part fills: 0.2 mm/px.
+    assert!((out["mm_per_px"]["x"].as_f64().unwrap() - 0.2).abs() < 0.01, "mm_per_px {}", out["mm_per_px"]);
+    // A crop of a 2 x 2 box is the part; a 1 px box is refused.
+    let dot = reference("tight-dot.png", &png(4, 4, |_, _| [255, 255, 255]));
+    assert!(
+        s.execute("inspect.compare_picture", &json!({"reference": dot, "part_fills_crop": true, "crop_px": [0, 0, 1, 1]}))
+            .unwrap_err()
+            .to_string()
+            .contains("2 x 2")
+    );
+}
+
+/// Reviewer re-test case: holes are filled on both sides, so a model missing a 100 x 100
+/// through-hole scores ~1.000 against a picture that shows the hole. That is the contract —
+/// outline only — and the command description must say so, so an agent does not read 1.000
+/// as "matches".
+#[test]
+fn the_compare_is_outline_only_holes_are_not_compared() {
+    assert!(crate::cmd::compare_picture::COMMANDS[0].params.contains("holes are not compared"), "the command description must say the compare is outline only");
+    let mut s = Session::default();
+    // A solid 200 x 200 mm plate against a picture of a plate with a 100 x 100 through-hole.
+    box_body(&mut s, "Plate", 200.0, 10.0, 200.0);
+    let path = reference(
+        "hole-only.png",
+        &png(220, 220, |x, y| {
+            let plate = (10..210).contains(&x) && (10..210).contains(&y);
+            let hole = (60..160).contains(&x) && (60..160).contains(&y);
+            if plate && !hole { [255, 255, 255] } else { [200, 200, 200] }
+        }),
+    );
+    let out = run(&mut s, "inspect.compare_picture", json!({"reference": path, "view": "front", "overlay": false}));
+    // The outlines match: the hole is not compared, as the description says.
+    assert!(out["overlap"].as_f64().unwrap() > 0.98, "overlap {}", out["overlap"]);
+}
+
+/// Reviewer re-test case: a white part on (245, 245, 245) saved as JPEG at quality 75 gave
+/// "no part" even on the stricter retry — the codec blurs the 10-level step at the part's
+/// outline into steps of a few levels each, under any local limit. The third pass takes the
+/// backdrop globally: near the border's main colour.
+#[test]
+fn a_light_jpeg_keeps_its_part() {
+    let mut s = Session::default();
+    box_body(&mut s, "Box", 20.0, 10.0, 30.0);
+    let path = reference(
+        "light.jpg",
+        &jpeg_q(200, 300, 75, |x, y| if (20..180).contains(&x) && (20..280).contains(&y) { [255, 255, 255] } else { [245, 245, 245] }),
+    );
+    let out = run(&mut s, "inspect.compare_picture", json!({"reference": path, "view": "front", "overlay": false}));
+    assert!(out["overlap"].as_f64().unwrap() > 0.9, "overlap {}", out["overlap"]);
 }

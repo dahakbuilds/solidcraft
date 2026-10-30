@@ -311,8 +311,10 @@ pub fn tool_definitions() -> Vec<Value> {
             "Compare with a reference picture",
             "Compare the model's outline with the part in a reference picture — a concept render, a product photo, one view off a design board. \
              The model's outline is `inspect.silhouette` from `view` (default front), `camera` and `bodies`; the picture's part is found by growing \
-             the background in from the border, so a backdrop's gradual shading stays background. `reference` is a PNG or JPEG inside the server's \
-             folders. `crop_px` / `crop_fraction` take one view off a board: [x, y, w, h] in pixels or as fractions 0..1 of the picture. `fit` names \
+             the background in from the border, so a backdrop's gradual shading stays background. The compare is outline only: holes are not \
+             compared — both the picture's and the model's holes are filled. `reference` is a PNG or JPEG inside the server's \
+             folders. `crop_px` / `crop_fraction` take one view off a board: [x, y, w, h] in pixels or as fractions 0..1 of the picture; \
+             `part_fills_crop: true` says the crop box is the part itself, for a crop that tightly frames it. `fit` names \
              the dimension the scale comes from (\"width\", \"height\", \"both\"; default \"width\") — one uniform scale, never stretched per axis; \
              \"both\" scales by width and reports `aspect_mismatch` when the shapes differ. Returns as text the overlap (0..1) and the model's top, \
              bottom, left and right edges against the picture's in mm at nine stations (positive where the model reaches past the picture), and as \
