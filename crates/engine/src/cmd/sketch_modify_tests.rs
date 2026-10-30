@@ -584,8 +584,8 @@ fn extend_does_not_treat_a_line_end_inside_a_circle_as_lying_on_it() {
     // construction circle around the drawing made Extend treat a free end as held and lay a
     // loose new line instead of lengthening the line. Only an end on the circle is held.
     let mut s = new_sketch();
-    let l1 = ids(&run(&mut s, "sketch.line", json!({"points":[[0,5],[10,5]],"connect":false,"infer":false})))[0].clone();
-    let l2 = ids(&run(&mut s, "sketch.line", json!({"points":[[20,-10],[20,20]],"connect":false,"infer":false})))[0].clone();
+    let l1 = ids(&run(&mut s, "sketch.line", json!({"points":[[0,5],[10,5]],"connect":false,"infer":false}))["curves"])[0].clone();
+    let l2 = ids(&run(&mut s, "sketch.line", json!({"points":[[20,-10],[20,20]],"connect":false,"infer":false}))["curves"])[0].clone();
     run(&mut s, "sketch.circle.center", json!({"center":[5,5],"radius":60}));
     run(&mut s, "sketch.extend", json!({"curve": l1, "at": [9,5]}));
     let sk = sketch(&s);
@@ -600,7 +600,7 @@ fn extend_does_not_treat_a_line_end_inside_a_circle_as_lying_on_it() {
 
     // The same end deep inside a far larger circle behaves the same way.
     let mut s = new_sketch();
-    let l1 = ids(&run(&mut s, "sketch.line", json!({"points":[[0,5],[10,5]],"connect":false,"infer":false})))[0].clone();
+    let l1 = ids(&run(&mut s, "sketch.line", json!({"points":[[0,5],[10,5]],"connect":false,"infer":false}))["curves"])[0].clone();
     run(&mut s, "sketch.line", json!({"points":[[20,-10],[20,20]],"connect":false,"infer":false}));
     run(&mut s, "sketch.circle.center", json!({"center":[100,100],"radius":200}));
     run(&mut s, "sketch.extend", json!({"curve": l1, "at": [9,5]}));
@@ -611,7 +611,7 @@ fn extend_does_not_treat_a_line_end_inside_a_circle_as_lying_on_it() {
 
     // An end that lies ON the circle is still held: Extend adds a new line from it.
     let mut s = new_sketch();
-    let l1 = ids(&run(&mut s, "sketch.line", json!({"points":[[0,5],[10,5]],"connect":false,"infer":false})))[0].clone();
+    let l1 = ids(&run(&mut s, "sketch.line", json!({"points":[[0,5],[10,5]],"connect":false,"infer":false}))["curves"])[0].clone();
     run(&mut s, "sketch.line", json!({"points":[[20,-10],[20,20]],"connect":false,"infer":false}));
     run(&mut s, "sketch.circle.center", json!({"center":[5,5],"radius":5}));
     run(&mut s, "sketch.extend", json!({"curve": l1, "at": [9,5]}));
@@ -627,9 +627,9 @@ fn extend_from_a_held_end_is_pinned_to_the_curve_it_stops_on() {
     // a new line. It stops in the middle of a third curve: the new end point is held on that
     // curve, as the free-end path holds its end, instead of lying loose over it.
     let mut s = new_sketch();
-    let l1 = ids(&run(&mut s, "sketch.line", json!({"points":[[0,0],[10,0]],"connect":false,"infer":false})))[0].clone();
-    run(&mut s, "sketch.line", json!({"points":[[10,0],[10,10]],"connect":false,"infer":false}));
-    let wall = ids(&run(&mut s, "sketch.line", json!({"points":[[20,-10],[20,10]],"connect":false,"infer":false})))[0].clone();
+    let both = ids(&run(&mut s, "sketch.line", json!({"points":[[0,0],[10,0],[10,10]],"connect":false,"infer":false}))["curves"]);
+    let l1 = both[0].clone();
+    let wall = ids(&run(&mut s, "sketch.line", json!({"points":[[20,-10],[20,10]],"connect":false,"infer":false}))["curves"])[0].clone();
     run(&mut s, "sketch.extend", json!({"curve": l1, "at": [10,0]}));
     let sk = sketch(&s);
     assert_eq!(sk.curves.len(), 4, "the held end stays and a new line is added");
