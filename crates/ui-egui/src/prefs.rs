@@ -3715,7 +3715,7 @@ mod tests {
         }
         let mut restored = crate::SolveApp::new(Default::default(), Default::default());
         restored.load_prefs(&h.app.prefs());
-        assert_eq!(restored.preferences.navigation_bar, before.navigation_bar);
+        assert_eq!(restored.preferences.navigation_bar, NavigationBar::default(), "a change that was not applied is not saved (#9730)");
         h.call("ui.prefs", json!({"button":"cancel"}));
         assert_eq!(h.app.preferences.navigation_bar, NavigationBar::default());
         h.call("ui.prefs", json!({"open":"Interface","navigation_bar":{"slots":[]}}));
@@ -4530,6 +4530,7 @@ mod tests {
         scroll_to_and_click(&mut h, "dialog:button::Restore defaults");
         scroll_to_and_click(&mut h, "dialog:button::Restore defaults");
         assert!(!h.app.space_mouse.restore_pending && section_is_at_defaults(&h.app));
+        h.call("ui.prefs", json!({"button":"apply"}));
         let saved = h.app.prefs();
         let mut next = crate::scenario::Harness::new();
         next.app.preferences.space_mouse_speed = 2.5;
@@ -6279,7 +6280,7 @@ mod tests {
         assert_eq!(h.app.session.doc.to_json(), design);
         let mut restored = SolveApp::new(solidcraft_engine::Session::default(), Default::default());
         restored.load_prefs(&h.app.prefs());
-        assert_eq!(restored.preferences.navigator_style, NavigatorStyle::Cube);
+        assert_eq!(restored.preferences.navigator_style, NavigatorStyle::Axes, "a change that was not applied is not saved (#9730)");
         let before = h.app.preferences.clone();
         assert!(control(&mut h.app, &json!({"navigator_style":"unknown", "nav":"solidworks"})).is_err());
         assert_eq!(h.app.preferences, before, "invalid settings must fail atomically");
@@ -6544,7 +6545,7 @@ mod tests {
         assert!(h.app.preferences.free_orbit);
         let mut restored = SolveApp::new(solidcraft_engine::Session::default(), Default::default());
         restored.load_prefs(&h.app.prefs());
-        assert!(restored.preferences.free_orbit);
+        assert!(!restored.preferences.free_orbit, "a change that was not applied is not saved (#9730)");
         h.call("ui.prefs", json!({"button":"cancel"}));
         assert!(!h.app.preferences.free_orbit);
         h.call("ui.prefs", json!({"open":"Navigation","free_orbit":true,"button":"apply"}));
@@ -6573,7 +6574,7 @@ mod tests {
         assert!(h.app.preferences.radial_context_menu, "the actual checkbox enables radial menus");
         let mut restored = SolveApp::new(solidcraft_engine::Session::default(), Default::default());
         restored.load_prefs(&h.app.prefs());
-        assert!(restored.preferences.radial_context_menu, "enabled preference survives save/load");
+        assert!(!restored.preferences.radial_context_menu, "a change that was not applied is not saved (#9730)");
         h.call("ui.prefs", json!({"button":"cancel"}));
         assert!(!h.app.preferences.radial_context_menu, "Cancel restores the default-off setting");
         h.call("ui.prefs", json!({"open":"Navigation","radial_context_menu":true}));
@@ -6634,7 +6635,7 @@ mod tests {
         assert_eq!(h.call("ui.prefs", json!({}))["result"]["persistent_ribbon_pressed"], false);
         let mut restored = SolveApp::new(Default::default(), Default::default());
         restored.load_prefs(&h.app.prefs());
-        assert!(!restored.preferences.persistent_ribbon_pressed);
+        assert!(restored.preferences.persistent_ribbon_pressed, "a change that was not applied is not saved (#9730)");
         h.call("ui.prefs", json!({"button":"cancel"}));
         assert!(h.app.preferences.persistent_ribbon_pressed);
         h.call("ui.prefs", json!({"open":"Interface","persistent_ribbon_pressed":false,"button":"apply"}));
@@ -6666,7 +6667,7 @@ mod tests {
         assert_eq!(h.call("ui.prefs", json!({}))["result"]["viewport_analysis_status"], false);
         let mut restored = SolveApp::new(Default::default(), Default::default());
         restored.load_prefs(&h.app.prefs());
-        assert!(!restored.preferences.viewport_analysis_status);
+        assert!(restored.preferences.viewport_analysis_status, "a change that was not applied is not saved (#9730)");
         h.call("ui.prefs", json!({"button":"cancel"}));
         assert!(h.app.preferences.viewport_analysis_status);
         h.call("ui.prefs", json!({"open":"Interface","viewport_analysis_status":false,"button":"apply"}));
@@ -6719,7 +6720,7 @@ mod tests {
         assert_eq!(h.call("ui.prefs", json!({}))["result"]["viewport_section_status"], false);
         let mut restored = SolveApp::new(Default::default(), Default::default());
         restored.load_prefs(&h.app.prefs());
-        assert!(!restored.preferences.viewport_section_status);
+        assert!(restored.preferences.viewport_section_status, "a change that was not applied is not saved (#9730)");
         h.call("ui.prefs", json!({"button":"cancel"}));
         assert!(h.app.preferences.viewport_section_status);
         h.call("ui.prefs", json!({"open":"Interface","viewport_section_status":false,"button":"apply"}));
@@ -6751,7 +6752,7 @@ mod tests {
         assert_eq!(h.call("ui.prefs", json!({}))["result"]["viewport_status_details"], false);
         let mut restored = SolveApp::new(Default::default(), Default::default());
         restored.load_prefs(&h.app.prefs());
-        assert!(!restored.preferences.viewport_status_details);
+        assert!(restored.preferences.viewport_status_details, "a change that was not applied is not saved (#9730)");
         h.call("ui.prefs", json!({"button":"cancel"}));
         assert!(h.app.preferences.viewport_status_details);
         h.call("ui.prefs", json!({"open":"Interface","viewport_status_details":false,"button":"apply"}));
@@ -6783,7 +6784,7 @@ mod tests {
         assert_eq!(h.call("ui.prefs", json!({}))["result"]["viewport_status_summary"], false);
         let mut restored = SolveApp::new(Default::default(), Default::default());
         restored.load_prefs(&h.app.prefs());
-        assert!(!restored.preferences.viewport_status_summary);
+        assert!(restored.preferences.viewport_status_summary, "a change that was not applied is not saved (#9730)");
         h.call("ui.prefs", json!({"button":"cancel"}));
         assert!(h.app.preferences.viewport_status_summary);
         h.call("ui.prefs", json!({"open":"Interface","viewport_status_summary":false,"button":"apply"}));
@@ -6839,8 +6840,8 @@ mod tests {
         assert!(!h.app.session.single_surface_analysis());
         let mut restored = SolveApp::new(Default::default(), Default::default());
         restored.load_prefs(&h.app.prefs());
-        assert!(!restored.preferences.single_surface_analysis);
-        assert!(!restored.session.single_surface_analysis(), "loaded settings apply before any command");
+        assert!(restored.preferences.single_surface_analysis, "a change that was not applied is not saved (#9730)");
+        assert!(restored.session.single_surface_analysis(), "loaded settings apply before any command");
         h.call("ui.prefs", json!({"button":"cancel"}));
         assert!(h.app.preferences.single_surface_analysis && h.app.session.single_surface_analysis());
         h.call("ui.prefs", json!({"open":"Graphics","single_surface_analysis":false,"button":"apply"}));
@@ -6933,7 +6934,7 @@ mod tests {
         assert!(h.app.preferences.cosmetic_threads, "the actual checkbox enables the optional markings");
         let mut restored = SolveApp::new(solidcraft_engine::Session::default(), Default::default());
         restored.load_prefs(&h.app.prefs());
-        assert!(restored.preferences.cosmetic_threads, "the preference survives saved application settings");
+        assert!(!restored.preferences.cosmetic_threads, "a change that was not applied is not saved (#9730)");
         h.call("ui.prefs", json!({"button":"cancel"}));
         assert!(!h.app.preferences.cosmetic_threads);
         h.call("ui.prefs", json!({"open":"Graphics","cosmetic_threads":true,"button":"apply"}));
@@ -7614,7 +7615,7 @@ mod ambient_occlusion_tests {
         assert!(h.app.preferences.ambient_occlusion);
         let mut restored = SolveApp::new(solidcraft_engine::Session::default(), Default::default());
         restored.load_prefs(&h.app.prefs());
-        assert!(restored.preferences.ambient_occlusion);
+        assert!(!restored.preferences.ambient_occlusion, "a change that was not applied is not saved (#9730)");
         h.call("ui.prefs", json!({"button":"cancel"}));
         assert!(!h.app.preferences.ambient_occlusion);
         h.call("ui.prefs", json!({"open":"Graphics", "ambient_occlusion":true}));
@@ -7678,7 +7679,7 @@ mod graphics_preset_tests {
         assert!(h.app.preferences.ambient_occlusion);
         let mut restored = SolveApp::new(solidcraft_engine::Session::default(), Default::default());
         restored.load_prefs(&h.app.prefs());
-        assert!(restored.preferences.ambient_occlusion);
+        assert!(!restored.preferences.ambient_occlusion, "a change that was not applied is not saved (#9730)");
         h.call("ui.prefs", json!({"button":"cancel"}));
         assert_eq!(graphics_preset(&h.app.preferences), "performance");
         assert!(!h.app.preferences.ambient_occlusion);
@@ -7696,6 +7697,9 @@ mod graphics_preset_tests {
         assert_eq!(h.app.preferences.display_quality, "fine");
         assert_eq!(h.app.preferences.supersampling, 2.0);
         assert!(h.app.preferences.supersampling_adaptive);
+        // The dialog is closed now: what is saved is the live state, quality included (#9730).
+        let mut restored = SolveApp::new(solidcraft_engine::Session::default(), Default::default());
+        restored.load_prefs(&h.app.prefs());
         for edit in [
             json!({"display_quality":"ultra"}),
             json!({"supersampling":1.5}),
