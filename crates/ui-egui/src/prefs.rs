@@ -1657,6 +1657,50 @@ fn apply_pending(app: &mut SolveApp) -> bool {
     app.prefs_window.snapshot.as_ref().is_some_and(|s| !s.matches(app))
 }
 
+/// The saved-settings keys whose values the snapshot holds, as [`SolveApp::prefs`] writes them.
+/// While the dialog is open every writer of the settings file saves these instead of the live
+/// values, so a change that was never applied can't reach disk through the periodic save, a
+/// quit or a window close (#9730). Keys the dialog can't change keep their live values.
+pub(crate) fn held_overlay(app: &SolveApp) -> Option<serde_json::Map<String, serde_json::Value>> {
+    let s = app.prefs_window.snapshot.as_ref()?;
+    let mut prefs = s.prefs.clone();
+    // Same bookkeeping rule as `restore`: a check that finished while the dialog was open stays.
+    prefs.update.clone_from(&app.preferences.update);
+    let mut shortcut_box = app.sbox.prefs();
+    if let Some(o) = shortcut_box.as_object_mut() {
+        o.insert("pinned".into(), serde_json::json!(s.favourites));
+    }
+    let mut profiles = app.settings_profiles.prefs();
+    if let Some(o) = profiles.as_object_mut() {
+        o.insert("active".into(), serde_json::json!(s.profile));
+    }
+    let mut shortcuts = serde_json::Map::new();
+    for (id, keys) in &s.keys {
+        shortcuts.insert(id.clone(), crate::keymap::keys_value(keys));
+    }
+    let mut m = serde_json::Map::new();
+    for (key, value) in [
+        ("dark", serde_json::json!(s.dark)),
+        ("grid", serde_json::json!(s.grid)),
+        ("navigation_bar", serde_json::json!(s.navigation_bar)),
+        ("perspective", serde_json::json!(s.perspective)),
+        ("pick_bodies", serde_json::json!(s.pick_bodies)),
+        ("auto_project", serde_json::json!(s.auto_project)),
+        ("visual_style", serde_json::json!(s.style)),
+        ("shortcut_box", shortcut_box),
+        ("shortcuts", serde_json::Value::Object(shortcuts)),
+        ("toolbar", s.toolbar.clone()),
+        ("settings_profiles", profiles),
+        ("autosave_minutes", serde_json::json!(s.autosave)),
+        ("ground_shadow", serde_json::json!(s.shadow)),
+        ("agent_cursor", serde_json::json!(s.agent)),
+        ("preferences", serde_json::to_value(&prefs).unwrap_or_default()),
+    ] {
+        m.insert(key.to_string(), value);
+    }
+    Some(m)
+}
+
 /// The colour theme (#2255): Dark, Light, System, the built-in theme files and the imported
 /// ones, with Import…, Export… (the theme on now as a complete file, to start a new one from)
 /// and Remove (an imported theme). Like the other preferences, a choice applies at once.
@@ -6031,6 +6075,79 @@ mod tests {
         assert!(set(&mut app, &json!({"graphics_adapter":"x".repeat(1025)})).is_err());
         assert!(set(&mut app, &json!({"graphics_adapter":"card\nname"})).is_err());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// The settings `SolveApp::prefs` would write right now, parsed.
+    fn saved_prefs(app: &SolveApp) -> serde_json::Value {
+        serde_json::from_str(&app.prefs()).unwrap()
+    }
+
+    #[test]
+    fn unapplied_changes_are_not_saved_while_the_dialog_is_open() {
+        let mut app = SolveApp::new(solidcraft_engine::Session::default(), crate::Services::default());
+        assert_eq!(saved_prefs(&app)["preferences"]["theme"], "dark");
+        assert_eq!(saved_prefs(&app)["preferences"]["sketch_tab_always"], false);
+        // Open the dialog: the snapshot is taken as `show` and the control channel take it.
+        app.prefs_window.open = true;
+        app.prefs_window.snapshot = Some(Snapshot::take(&app));
+        // The Light tile and the Sketch tab box, clicked without Apply.
+        set(&mut app, &json!({"theme": "light", "sketch_tab_always": true})).unwrap();
+        assert_eq!(app.preferences.theme, "light", "the live app has the change");
+        assert!(!app.ui.dark);
+        let held = saved_prefs(&app);
+        assert_eq!(held["preferences"]["theme"], "dark", "a change that was not applied must not be saved");
+        assert_eq!(held["preferences"]["sketch_tab_always"], false);
+        assert_eq!(held["dark"], true, "the Light tile's dark flag is not saved either");
+        // Apply makes the change the baseline: from now on it is saved.
+        app.prefs_window.snapshot = Some(Snapshot::take(&app));
+        let applied = saved_prefs(&app);
+        assert_eq!(applied["preferences"]["theme"], "light");
+        assert_eq!(applied["dark"], false);
+        // A second unapplied change is held back too, and Cancel puts it back.
+        set(&mut app, &json!({"theme": "dark"})).unwrap();
+        assert_eq!(saved_prefs(&app)["preferences"]["theme"], "light", "the second change waits for Apply too");
+        close(&mut app, true);
+        let after = saved_prefs(&app);
+        assert_eq!(after["preferences"]["theme"], "light", "Cancel restores the applied state");
+        assert_eq!(after["dark"], false);
+        assert_eq!(after["preferences"]["sketch_tab_always"], true, "Apply's change stays");
+    }
+
+    #[test]
+    fn settings_the_dialog_cannot_change_keep_saving_while_it_is_open() {
+        let mut app = SolveApp::new(solidcraft_engine::Session::default(), crate::Services::default());
+        app.prefs_window.open = true;
+        app.prefs_window.snapshot = Some(Snapshot::take(&app));
+        // A recent file joins while the dialog is open: not a dialog setting, so it is saved.
+        app.home.recent.insert(0, "bracket.solid".to_string());
+        assert_eq!(saved_prefs(&app)["recent"][0], "bracket.solid");
+    }
+
+    #[test]
+    fn shortcut_changes_are_not_saved_while_the_dialog_is_open() {
+        let mut app = SolveApp::new(solidcraft_engine::Session::default(), crate::Services::default());
+        app.keymap.custom.insert("file.new".into(), vec!["Ctrl+N".into()]);
+        app.prefs_window.open = true;
+        app.prefs_window.snapshot = Some(Snapshot::take(&app));
+        app.keymap.custom.insert("file.save".into(), vec!["Ctrl+S".into()]);
+        let saved = saved_prefs(&app);
+        assert_eq!(saved["shortcuts"]["file.new"], "Ctrl+N", "the shortcut from before the dialog is saved");
+        assert!(saved["shortcuts"].get("file.save").is_none(), "a shortcut rebound without Apply is not saved");
+    }
+
+    #[test]
+    fn control_channel_holds_unapplied_changes_out_of_the_saved_settings() {
+        let mut h = crate::scenario::Harness::new();
+        h.call("ui.prefs", json!({"open": "Interface"}));
+        h.call("ui.prefs", json!({"sketch_tab_always": true}));
+        let saved = saved_prefs(&h.app);
+        assert!(h.app.preferences.sketch_tab_always);
+        assert_eq!(saved["preferences"]["sketch_tab_always"], false, "the control channel's change waits for Apply");
+        h.call("ui.prefs", json!({"button": "apply"}));
+        assert_eq!(saved_prefs(&h.app)["preferences"]["sketch_tab_always"], true, "Apply makes it the saved state");
+        h.call("ui.prefs", json!({"sketch_tab_always": false}));
+        h.call("ui.prefs", json!({"button": "cancel"}));
+        assert_eq!(saved_prefs(&h.app)["preferences"]["sketch_tab_always"], true, "Cancel puts back what Apply left");
     }
 
     #[test]

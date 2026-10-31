@@ -975,7 +975,7 @@ impl SolveApp {
 
     /// Preferences kept between runs (JSON), for the host to store.
     pub fn prefs(&self) -> String {
-        json!({
+        let mut v = json!({
             "dark": self.ui.dark,
             "grid": self.ui.show_grid,
             "navigation_bar": self.ui.show_navigation_bar,
@@ -998,8 +998,19 @@ impl SolveApp {
             "agent_cursor": self.ui.agent_cursor,
             "preferences": self.preferences,
             "gpu_path_setup_seconds": self.render_workspace.setup_seconds,
-        })
-        .to_string()
+        });
+        // While the Preferences dialog is open the file holds what Cancel would restore: a change
+        // that was never applied must not reach disk through the periodic save, a quit or a
+        // window close (#9730). One change covers every writer — desktop save and on_exit, the
+        // web app's save, and the control channel.
+        if let Some(held) = prefs::held_overlay(self)
+            && let Some(obj) = v.as_object_mut()
+        {
+            for (key, value) in held {
+                obj.insert(key, value);
+            }
+        }
+        v.to_string()
     }
 
     /// Restore preferences saved with [`SolveApp::prefs`].
