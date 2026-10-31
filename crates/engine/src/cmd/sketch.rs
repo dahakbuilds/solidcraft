@@ -340,7 +340,9 @@ fn settle(strict: bool, mut rep: SolveReport, sk: &mut Sketch, unsolved: Sketch,
         if rep.folded.is_empty() && rep.oversized.is_none() && !rep.failing.is_empty() {
             let had: Vec<String> = rep.failing.iter().filter(|id| pre.iter().any(|p| p == *id)).cloned().collect();
             if had.is_empty() {
-                return Err(EngineError::Other("that would over-constrain the sketch (it conflicts with what the other constraints already determine)".into()));
+                return Err(EngineError::Other(
+                    "that would over-constrain the sketch (it conflicts with what the other constraints already determine)".into(),
+                ));
             }
             rep.failing = had;
         }
@@ -1849,12 +1851,12 @@ pub(super) fn apply_in_order(sk: &mut Sketch, rep: &SolveReport, first: &[Ent], 
     let conflicts: Vec<String> = sk
         .constraints
         .iter()
-        .position(|c| new.iter().any(|n| *n == c.id))
+        .position(|c| new.contains(&c.id))
         .map(|ci| solidcraft_sketch::determined_by(sk, ci))
         .unwrap_or_default()
         .into_iter()
         .filter_map(|k| sk.constraints.get(k))
-        .filter(|c| !new.iter().any(|n| *n == c.id))
+        .filter(|c| !new.contains(&c.id))
         .map(|c| c.id.clone())
         .collect();
     let conflicts = if conflicts.is_empty() { conflict_probe(sk, new) } else { conflicts };
@@ -1875,7 +1877,7 @@ const CONFLICT_PROBE_MAX: usize = 64;
 /// solution. Empty when the sketch is too large to probe, already solves, or fails whatever
 /// the sketch's own constraints — the new one asks the impossible of the geometry itself.
 fn conflict_probe(sk: &Sketch, new: &[String]) -> Vec<String> {
-    let is_new = |c: &solidcraft_sketch::Constraint| new.iter().any(|n| *n == c.id);
+    let is_new = |c: &solidcraft_sketch::Constraint| new.contains(&c.id);
     let holds = |s: &Sketch| {
         let mut t = s.clone();
         let rep = solve_with(&mut t, &Hold::default(), None, Analysis::StatusOnly, None);
@@ -1904,18 +1906,14 @@ fn conflict_probe(sk: &Sketch, new: &[String]) -> Vec<String> {
 /// line pair already at the forbidden angle), so those constraints are what it conflicts with.
 /// Empty for any other kind of new constraint.
 fn direction_conflicts(sk: &Sketch, new: &[String]) -> Vec<String> {
-    let pair = sk
-        .constraints
-        .iter()
-        .find(|c| new.iter().any(|n| *n == c.id))
-        .and_then(|c| match c.kind {
-            ConstraintKind::Parallel { a, b } | ConstraintKind::Perpendicular { a, b } => Some((a, b)),
-            _ => None,
-        });
+    let pair = sk.constraints.iter().find(|c| new.contains(&c.id)).and_then(|c| match c.kind {
+        ConstraintKind::Parallel { a, b } | ConstraintKind::Perpendicular { a, b } => Some((a, b)),
+        _ => None,
+    });
     let Some((a, b)) = pair else { return Vec::new() };
     sk.constraints
         .iter()
-        .filter(|c| !new.iter().any(|n| *n == c.id))
+        .filter(|c| !new.contains(&c.id))
         .filter(|c| {
             matches!(c.kind,
                 ConstraintKind::Horizontal { l } | ConstraintKind::Vertical { l } | ConstraintKind::LineAngle { l, .. }
