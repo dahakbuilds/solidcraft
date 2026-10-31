@@ -1228,12 +1228,8 @@ impl Session {
     pub(crate) fn settle_value_edit(&mut self, solved_before: &SketchValues) -> Result<()> {
         // The solved geometry each sketch had before the edit, for the shrink/fling checks
         // after the refresh below (the same checks `settle` runs on an edit's own solve).
-        let solved_geometry: std::collections::BTreeMap<u64, solidcraft_sketch::Sketch> = self
-            .model
-            .results
-            .iter()
-            .filter_map(|r| r.state.sketch(r.id).map(|k| (r.id, k.sketch.clone())))
-            .collect();
+        let solved_geometry: std::collections::BTreeMap<u64, solidcraft_sketch::Sketch> =
+            self.model.results.iter().filter_map(|r| r.state.sketch(r.id).map(|k| (r.id, k.sketch.clone()))).collect();
         // Quantity changes alter topology, so store the regenerated instances in the same
         // transaction as the parameter edit. Later picks and undo must see those same ids.
         let mut updated: Vec<_> = self
