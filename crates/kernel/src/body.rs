@@ -1282,8 +1282,11 @@ impl Body {
         // across the solid (#1289), and one that runs across the join of a B-spline surface that
         // closes on itself, which comes out folded over itself or with a hole in it.
         // Such a body is meshed from its display plan, which cuts and unwraps those faces.
-        let planned =
-            guard("tessellate", || Ok(crate::tess::seam::turns_more_than_once(&self.solid) || crate::tess::seam::closes_on_itself(&self.solid)));
+        let planned = guard("tessellate", || {
+            Ok(crate::tess::seam::turns_once_or_more(&self.solid)
+                || crate::tess::seam::closes_on_itself(&self.solid)
+                || crate::tess::seam::seam_used_twice(&self.solid))
+        });
         if planned.unwrap_or(false) {
             let turn = (angle.is_finite() && angle > 0.0)
                 .then(|| crate::tess::size::Turn { angle: angle.max(MIN_DISPLAY_ANGLE), floor: tol * DISPLAY_ANGLE_FLOOR });

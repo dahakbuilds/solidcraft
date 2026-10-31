@@ -36,6 +36,7 @@ mod clearance;
 mod coaxial_overlap;
 mod continuity;
 mod coplanar;
+mod core_bridge;
 mod corner_g2;
 mod curveblend;
 mod delete_face;

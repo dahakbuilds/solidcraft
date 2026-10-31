@@ -518,13 +518,48 @@ fn plan_face(
         projected.push(l);
     }
     align_periods(&mut projected, &dom);
+    // A face bounded by one seam edge used both ways (a single-face sphere: up the
+    // seam and straight back down) projects to a slit — every node on one parameter
+    // line — which encloses no area to triangulate. The face is the full wrap around
+    // the periodic direction: open the slit into the one-period strip by moving the
+    // return leg a full period across, and count the face as already cut so the
+    // strip is meshed as it stands.
+    let mut slit_opened = false;
+    for d in 0..2 {
+        let Some(per) = dom.period[d] else { continue };
+        if projected.len() != 1 || projected[0].uv.len() < 4 {
+            continue;
+        }
+        let u0 = projected[0].uv[0][d];
+        if !projected[0].uv.iter().all(|q| (q[d] - u0).abs() <= per * 1e-6) {
+            continue;
+        }
+        let other = 1 - d;
+        let turn = (1..projected[0].uv.len())
+            .max_by(|&a, &b| {
+                let da = (projected[0].uv[a][other] - projected[0].uv[0][other]).abs();
+                let db = (projected[0].uv[b][other] - projected[0].uv[0][other]).abs();
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .unwrap_or(1);
+        let shift = match dom.range[d] {
+            Some((lo, hi)) if u0 + per > lo.max(hi) + per * 1e-6 => -per,
+            _ => per,
+        };
+        for q in &mut projected[0].uv[turn..] {
+            q[d] += shift;
+        }
+        slit_opened = true;
+        break;
+    }
     // A loop that winds around a periodic direction does not close in (u, v): the face is cut
     // along a parameter line into one period (a seamless cylinder face, a helical trim).
-    let wound: Vec<usize> = (0..2).filter(|&d| dom.period[d].is_some_and(|per| seam::winds(&projected, d, per))).collect();
+    let wound: Vec<usize> =
+        if slit_opened { Vec::new() } else { (0..2).filter(|&d| dom.period[d].is_some_and(|per| seam::winds(&projected, d, per))).collect() };
     // A face cut along a seam is a long winding strip whose sides are the cut lines and the
     // boundary in turn: Delaunay with sag refinement meshes it (the patch layouts below assume
     // boundary all round, and leave fans across the strip's corners off the surface).
-    let seamed = !wound.is_empty();
+    let seamed = slit_opened || !wound.is_empty();
     match wound.as_slice() {
         [] => {}
         [d] => {

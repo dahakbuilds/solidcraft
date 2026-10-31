@@ -113,7 +113,10 @@ mod tests {
         let placed = transform(&tool, Vec3::new(11., -7., 5.), Vec3::ZERO, Vec3::new(1., 2., 3.), 0.8).unwrap();
         let (o, a) = axis(&placed).unwrap();
         let turned = transform(&placed, Vec3::ZERO, o, a, 0.3).unwrap();
-        assert!((crate::measure(&placed).unwrap().volume - crate::measure(&turned).unwrap().volume).abs() < 1e-6);
+        let (vp, vt) = (crate::measure(&placed).unwrap().volume, crate::measure(&turned).unwrap().volume);
+        // Relative: the plan's mesh refines by chord and turn, so a moved body's mesh
+        // differs from the original's in the last digits.
+        assert!((vp - vt).abs() < 1e-8 * vp, "{vp} {vt}");
         // A partial turn's radial caps would move; an affine scale can make the bore elliptic.
         assert!(axis(&drill(std::f64::consts::PI)).is_none());
         let scaled = transform_matrix(&tool, [[2., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.], [0., 0., 0., 1.]]).unwrap();

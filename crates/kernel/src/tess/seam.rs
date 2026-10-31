@@ -394,10 +394,29 @@ pub(crate) fn closes_on_itself(solid: &crate::body::Solid) -> bool {
     solid.face_iter().any(|f| matches!(super::surface::eval_surface(&f.surface()), Some(EvalSurface::Nurbs { closed, .. }) if closed[0] || closed[1]))
 }
 
+/// Whether a face's boundary uses one of its own edges twice: the face is cut along
+/// a seam it carries as an edge (a single-face sphere's meridian, a full-wrap cone
+/// or cylinder side). Truck's mesher cannot cut such a face — its triangles come out
+/// degenerate or missing — so the reference mesh is made from the display plan, which
+/// opens the seam into a one-period strip.
+pub(crate) fn seam_used_twice(solid: &crate::body::Solid) -> bool {
+    use std::collections::HashSet;
+    for face in solid.face_iter() {
+        let mut seen = HashSet::new();
+        for e in face.edge_iter() {
+            if !seen.insert(e.id()) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Whether a face of `solid` lies on a surface of revolution and has a boundary loop turning
-/// more than once around its axis (a helical trim). Truck's mesher cannot mesh such a face (its
-/// triangles cut across the solid), so the reference mesh is made from the display plan instead.
-pub(crate) fn turns_more_than_once(solid: &crate::body::Solid) -> bool {
+/// at least once around its axis (a helical trim, or a full wrap whose seam truck cannot cut).
+/// Truck's mesher cannot mesh such a face (its triangles cut across the solid or come out
+/// degenerate), so the reference mesh is made from the display plan instead.
+pub(crate) fn turns_once_or_more(solid: &crate::body::Solid) -> bool {
     use truck_meshalgo::prelude::*;
     use truck_modeling as mt;
     let tau = std::f64::consts::TAU;
@@ -439,7 +458,7 @@ pub(crate) fn turns_more_than_once(solid: &crate::body::Solid) -> bool {
                     prev = Some(x);
                 }
             }
-            if hi - lo > tau * 1.01 {
+            if hi - lo > tau * 0.99 {
                 return true;
             }
         }
