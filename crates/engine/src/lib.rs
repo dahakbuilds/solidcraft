@@ -175,6 +175,18 @@ pub enum Sel {
     },
 }
 
+impl Sel {
+    /// The body this item names, when it names one: the body itself, or the body a face, edge
+    /// or vertex belongs to. Session state that names a body has to follow its renames (#9737).
+    pub(crate) fn body_name(&self) -> Option<&str> {
+        match self {
+            Sel::Body { name } => Some(name),
+            Sel::Face { body, .. } | Sel::Edge { body, .. } | Sel::Vertex { body, .. } => Some(body),
+            _ => None,
+        }
+    }
+}
+
 /// A body rename between two designs (see `Session::body_renames`).
 #[derive(Clone)]
 struct BodyRename {
@@ -1009,6 +1021,13 @@ impl Session {
         self.follow_axis_point_renames(previous);
         let rename = self.body_rename(previous);
         self.remap_hidden_bodies(previous, &self.model.state(), rename.as_ref().map(|(old, new, _)| (old.as_str(), new.as_str())));
+        // Locked bodies follow the rename here rather than in `body.rename`, so a rename that
+        // reaches the design any other way (undo, an outside edit) is covered too (#9737).
+        if let Some((old, new, _)) = &rename {
+            for b in self.visibility.locked_bodies.iter_mut().filter(|b| **b == *old) {
+                *b = new.clone();
+            }
+        }
         if let Some((old, new, names_only)) = rename
             && names_only
             && self.model.rename_body(&self.doc, &old, &new)

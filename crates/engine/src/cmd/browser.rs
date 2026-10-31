@@ -1134,9 +1134,6 @@ fn rename_body(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad(cmd, e));
     }
     d.rename_body_keys(&old, name);
-    for b in s.visibility.locked_bodies.iter_mut().filter(|b| **b == old) {
-        *b = name.to_string();
-    }
     s.remember_body_rename(&previous, &old, name);
     Ok(json!({"body": old, "name": name}))
 }
@@ -1316,6 +1313,82 @@ mod tests {
         assert_eq!(s.visibility.hidden_bodies, ["Peg"]);
         run(&mut s, "edit.redo", json!({}));
         assert!(!s.body_visible("Stud"));
+    }
+
+    /// Two 5 mm boxes, `A` and `B`, as the #9737 repro script makes them.
+    fn two_boxes(s: &mut Session) {
+        run(s, "solid.box", json!({"length": 5, "width": 5, "height": 5, "body_name": "A"}));
+        run(s, "solid.box", json!({"length": 5, "width": 5, "height": 5, "corner": [10, 0, 0], "body_name": "B"}));
+    }
+
+    fn delete_selection(s: &mut Session) -> Value {
+        let items: Vec<Value> = s.selection.iter().map(|x| serde_json::to_value(x).unwrap()).collect();
+        match s.execute("selection.delete", &json!({"items": items})) {
+            Ok(v) => v,
+            Err(e) => panic!("selection.delete: {e}"),
+        }
+    }
+
+    #[test]
+    fn selection_follows_body_rename_and_delete_hits_the_renamed_body() {
+        // #9737: after renaming a selected body the selection is the new name, and Delete
+        // deletes it — the "nothing to delete" and the wrong-body delete are both gone.
+        let mut s = Session::default();
+        two_boxes(&mut s);
+        run(&mut s, "select.set", json!({"items": [{"type": "body", "name": "A"}]}));
+        run(&mut s, "body.rename", json!({"body": "A", "name": "Renamed"}));
+        assert_eq!(s.selection, vec![crate::Sel::Body { name: "Renamed".into() }]);
+        delete_selection(&mut s);
+        assert_eq!(names(&s), ["B"]);
+        // The old name is free; B takes it, and Delete finds nothing — B is never deleted.
+        run(&mut s, "body.rename", json!({"body": "B", "name": "A"}));
+        assert!(s.execute("selection.delete", &json!({"items": []})).is_err());
+        assert_eq!(names(&s), ["A"]);
+    }
+
+    #[test]
+    fn renaming_the_selection_leaves_the_old_name_for_another_body_to_take() {
+        // The wrong-body delete, head on: B takes A's name before Delete is pressed. The
+        // selection followed the rename, so Delete takes `Renamed` and B (now `A`) survives.
+        let mut s = Session::default();
+        two_boxes(&mut s);
+        run(&mut s, "select.set", json!({"items": [{"type": "body", "name": "A"}]}));
+        run(&mut s, "body.rename", json!({"body": "A", "name": "Renamed"}));
+        run(&mut s, "body.rename", json!({"body": "B", "name": "A"}));
+        assert_eq!(s.selection, vec![crate::Sel::Body { name: "Renamed".into() }]);
+        delete_selection(&mut s);
+        assert_eq!(names(&s), ["A"]);
+    }
+
+    #[test]
+    fn face_selection_follows_the_body_rename() {
+        let mut s = Session::default();
+        two_boxes(&mut s);
+        let face = json!({"type": "face", "body": "A", "index": 0, "point": [2.5, 2.5, 0]});
+        run(&mut s, "select.set", json!({"items": [face]}));
+        run(&mut s, "body.rename", json!({"body": "A", "name": "Renamed"}));
+        assert_eq!(s.selection, vec![crate::Sel::Face { body: "Renamed".into(), index: 0, point: [2.5, 2.5, 0.0].into() }]);
+    }
+
+    #[test]
+    fn a_selected_body_that_goes_away_leaves_the_selection() {
+        // A stale selection is how a later body taking the name gets deleted: once the body
+        // is gone the selection drops it, at the refresh that removed the body.
+        let mut s = Session::default();
+        two_boxes(&mut s);
+        run(&mut s, "select.set", json!({"items": [{"type": "body", "name": "A"}]}));
+        run(&mut s, "solid.remove", json!({"bodies": ["A"]}));
+        assert!(s.selection.is_empty(), "the gone body must not stay selected: {:?}", s.selection);
+    }
+
+    #[test]
+    fn select_set_refuses_a_body_name_that_is_not_there() {
+        let mut s = Session::default();
+        two_boxes(&mut s);
+        assert!(s.execute("select.set", &json!({"items": [{"type": "body", "name": "NoSuchBody"}]})).is_err());
+        assert!(s.selection.is_empty());
+        run(&mut s, "select.set", json!({"items": [{"type": "body", "name": "A"}, {"type": "body", "name": "B"}]}));
+        assert_eq!(s.selection.len(), 2);
     }
 
     #[test]

@@ -132,8 +132,10 @@ pub(crate) struct RemovedLaterCache {
 }
 
 impl Session {
-    /// Hidden names follow the same body and exact occurrence path through a rename. Undo
-    /// history restores visibility separately. Never parse display labels:
+    /// Hidden names and the bodies the selection names follow the same body and exact
+    /// occurrence path through a rename (#9737: a selected body stays selected under its new
+    /// name, so Delete hits the body the user actually selected, never one that later takes
+    /// the old name). Undo history restores visibility separately. Never parse display labels:
     /// ambiguous labels and names containing slashes use the document's canonical naming.
     pub(crate) fn remap_hidden_bodies(
         &mut self,
@@ -141,7 +143,8 @@ impl Session {
         state: &solidcraft_doc::ModelState,
         rename: Option<(&str, &str)>,
     ) {
-        if self.visibility.hidden_bodies.is_empty() {
+        let selected: std::collections::BTreeSet<&str> = self.selection.iter().filter_map(|s| s.body_name()).collect();
+        if self.visibility.hidden_bodies.is_empty() && selected.is_empty() {
             return;
         }
         if rename.is_none() {
@@ -165,7 +168,7 @@ impl Session {
         for (component, path, _) in previous.placements() {
             for body in state.bodies.iter().filter(|body| previous.model_body_component(body) == component) {
                 let old = before.name(&body.name, component, &path);
-                if hidden.contains(old.as_str()) {
+                if hidden.contains(old.as_str()) || selected.contains(old.as_str()) {
                     let source = rename.filter(|(old, _)| *old == body.name).map_or(body.name.as_str(), |(_, new)| new);
                     names.insert(old, after.name(source, component, &path));
                 }
@@ -174,6 +177,16 @@ impl Session {
         for hidden in &mut self.visibility.hidden_bodies {
             if let Some(new) = names.get(hidden) {
                 hidden.clone_from(new);
+            }
+        }
+        for sel in &mut self.selection {
+            let name = match sel {
+                Sel::Body { name } => name,
+                Sel::Face { body, .. } | Sel::Edge { body, .. } | Sel::Vertex { body, .. } => body,
+                _ => continue,
+            };
+            if let Some(new) = names.get(name.as_str()) {
+                name.clone_from(new);
             }
         }
     }
@@ -731,6 +744,15 @@ impl Session {
         }
         let selection = std::mem::take(&mut self.selection);
         self.selection = selection.into_iter().filter(|s| !matches!(s, Sel::Occurrence {path} if self.occurrence_placement(path).is_err())).collect();
+        // A selected body that is gone cannot be deleted, measured or shown: drop it, so a
+        // later body taking its name is never deleted in its place (#9737).
+        if self.selection.iter().any(|s| s.body_name().is_some()) {
+            let world = self.world_state();
+            self.selection.retain(|s| match s.body_name() {
+                Some(name) => world.body(name).is_some(),
+                None => true,
+            });
+        }
         let hidden = std::mem::take(&mut self.visibility.hidden_occurrences);
         self.visibility.hidden_occurrences = hidden.into_iter().filter(|p| self.occurrence_placement(p).is_ok()).collect();
     }

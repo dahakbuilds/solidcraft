@@ -1243,8 +1243,19 @@ fn select_set(s: &mut Session, p: &Value) -> Result<Value> {
     let mut sel: Vec<Sel> = Vec::new();
     for it in items {
         let one: Sel = serde_json::from_value(it).map_err(|e| bad("select.set", e.to_string()))?;
-        if let Sel::Occurrence { path } = &one {
-            s.occurrence_bodies(path, true).map_err(|e| bad("select.set", e.to_string()))?;
+        match &one {
+            Sel::Occurrence { path } => {
+                s.occurrence_bodies(path, true).map_err(|e| bad("select.set", e.to_string()))?;
+            }
+            // A selection may not name a body that isn't there: left selected it would delete
+            // nothing, or the next body to take that name (#9737).
+            other => {
+                if let Some(name) = other.body_name()
+                    && s.world_state().body(name).is_none()
+                {
+                    return Err(bad("select.set", format!("no body `{name}`")));
+                }
+            }
         }
         sel.push(one);
     }
