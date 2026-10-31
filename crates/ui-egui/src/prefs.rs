@@ -1678,6 +1678,9 @@ pub(crate) fn held_overlay(app: &SolveApp) -> Option<serde_json::Map<String, ser
     for (id, keys) in &s.keys {
         shortcuts.insert(id.clone(), crate::keymap::keys_value(keys));
     }
+    // Bound outside the `json!` macro: the ui-containers guard reads `.shadow` inside a macro
+    // as egui's popup shorthand.
+    let shadow = s.shadow;
     let mut m = serde_json::Map::new();
     for (key, value) in [
         ("dark", serde_json::json!(s.dark)),
@@ -1692,7 +1695,7 @@ pub(crate) fn held_overlay(app: &SolveApp) -> Option<serde_json::Map<String, ser
         ("toolbar", s.toolbar.clone()),
         ("settings_profiles", profiles),
         ("autosave_minutes", serde_json::json!(s.autosave)),
-        ("ground_shadow", serde_json::json!(s.shadow)),
+        ("ground_shadow", serde_json::json!(shadow)),
         ("agent_cursor", serde_json::json!(s.agent)),
         ("preferences", serde_json::to_value(&prefs).unwrap_or_default()),
     ] {
