@@ -1226,6 +1226,14 @@ impl Session {
     /// as before. Otherwise store each sketch whose values changed as solved, so the next edit
     /// continues from it (see `Model::adopt_solved_sketches`).
     pub(crate) fn settle_value_edit(&mut self, solved_before: &SketchValues) -> Result<()> {
+        // The solved geometry each sketch had before the edit, for the shrink/fling checks
+        // after the refresh below (the same checks `settle` runs on an edit's own solve).
+        let solved_geometry: std::collections::BTreeMap<u64, solidcraft_sketch::Sketch> = self
+            .model
+            .results
+            .iter()
+            .filter_map(|r| r.state.sketch(r.id).map(|k| (r.id, k.sketch.clone())))
+            .collect();
         // Quantity changes alter topology, so store the regenerated instances in the same
         // transaction as the parameter edit. Later picks and undo must see those same ids.
         let mut updated: Vec<_> = self
@@ -1254,8 +1262,19 @@ impl Session {
         self.refresh();
         for r in &self.model.results {
             let (Some(before), Some(k)) = (solved_before.get(&r.id), r.state.sketch(r.id)) else { continue };
-            if !k.report.keeps_orientation() && own_values(&k.sketch) != *before {
+            if own_values(&k.sketch) == *before {
+                continue;
+            }
+            if !k.report.keeps_orientation() {
                 let why = k.report.failure(|f| format!("its constraints would conflict ({f})"));
+                return Err(EngineError::Other(format!("sketch `{}`: {why}; the values were not changed", r.name)));
+            }
+            // The value changed this sketch and it still solves: refuse it the way `settle`
+            // refuses an edit's solve when the curve was squeezed away or points thrown far,
+            // so a zero (or wild) value is never stored as a sketch that can't be solved back.
+            if let Some(before_sketch) = solved_geometry.get(&r.id)
+                && let Some(why) = cmd::collapse_reason(before_sketch, &k.sketch)
+            {
                 return Err(EngineError::Other(format!("sketch `{}`: {why}; the values were not changed", r.name)));
             }
         }

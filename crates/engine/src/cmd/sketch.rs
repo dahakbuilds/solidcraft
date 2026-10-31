@@ -373,6 +373,21 @@ fn shrunk(before: &Sketch, after: &Sketch) -> Option<String> {
 /// dimension value) has thrown the geometry to a far solution.
 const FLUNG: f64 = 1000.0;
 
+/// Why a solve from `before` into `after` collapses the sketch, in the words `settle` uses to
+/// refuse an edit's solve: a line or circle shrunk to a point, or points thrown far away.
+/// `None` when the solved shape is one the edit can mean. Value edits (`Session::settle_value_edit`)
+/// run the same checks, so a parameter, a configuration row or the dimension editor cannot
+/// store a sketch whose curve has been squeezed away and which can never be solved back.
+pub(crate) fn collapse_reason(before: &Sketch, after: &Sketch) -> Option<String> {
+    if let Some(curve) = shrunk(before, after) {
+        return Some(format!("that would shrink {curve} to a point: its constraints can only be met without it"));
+    }
+    if flung(before, after) {
+        return Some("that would throw points of the sketch far away: its constraints have no solution near the sketch as it is".into());
+    }
+    None
+}
+
 /// Did solving `before` into `after` throw some point further than [`FLUNG`] times the sketch's
 /// size, or to no number at all?
 fn flung(before: &Sketch, after: &Sketch) -> bool {

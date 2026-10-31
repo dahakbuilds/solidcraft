@@ -92,6 +92,7 @@ pub(crate) use sheet::{
 mod silhouette;
 mod sketch;
 pub(crate) use sketch::author_path_for_rebind;
+pub(crate) use sketch::collapse_reason;
 pub(crate) use sketch::created as sketch_created;
 mod canvas_sketch;
 mod sketch_3d;
