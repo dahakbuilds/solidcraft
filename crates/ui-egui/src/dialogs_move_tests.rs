@@ -633,11 +633,12 @@ fn editing_a_free_move_shows_the_values_it_was_made_with() {
 fn editing_a_move_about_a_world_axis_keeps_the_angle_expression() {
     let mut h = crate::scenario::Harness::new();
     h.app.run("solid.box", json!({"length": 20, "width": 20, "height": 20})).unwrap();
-    let id =
-        h.app.run("solid.move", json!({"bodies": ["Body1"], "translate": ["0", "0", "5 mm"], "axis": [0.0, 0.0, 1.0], "angle": "45 deg"})).unwrap()
-            ["feature"]
-            .as_u64()
-            .unwrap();
+    let id = h
+        .app
+        .run("solid.move", json!({"bodies": ["Body1"], "translate": ["0", "0", "5 mm"], "axis": [0.0, 0.0, 1.0], "angle": "45 deg"}))
+        .unwrap()["feature"]
+        .as_u64()
+        .unwrap();
     let d = crate::dialogs::for_feature(&h.app, id, None).unwrap();
     let Kind::Move { rx, ry, rz, .. } = &d.kind else { panic!("not a move") };
     assert_eq!((rx.as_str(), ry.as_str(), rz.as_str()), ("0 deg", "0 deg", "45 deg"));
