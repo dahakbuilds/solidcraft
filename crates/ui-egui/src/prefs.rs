@@ -2685,7 +2685,7 @@ fn up_axis_changed(app: &mut SolveApp) {
 
 /// The geometry kernel preference changed: route operations through it at once
 /// ([`apply`] keeps it in step for every other path; a `SOLIDCRAFT_KERNEL` override wins).
-fn kernel_changed(app: &mut SolveApp) {
+pub(crate) fn kernel_changed(app: &mut SolveApp) {
     solidcraft_engine::kernel::select_kernel(solidcraft_engine::kernel::KernelChoice::from_id(&app.preferences.kernel).unwrap_or_default());
 }
 

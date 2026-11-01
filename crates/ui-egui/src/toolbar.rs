@@ -205,7 +205,7 @@ fn menu_commands(
 
 /// Room for the version between Report a bug and the caption buttons, at the least.
 const RIGHT_GROUP: f32 = 60.0;
-const CLUSTER_BUTTONS: f32 = 108.0;
+const CLUSTER_BUTTONS: f32 = 164.0;
 
 /// The least room the document tabs keep when a long version takes its extra width: one tab and
 /// the + button ([`crate::documents::layout`]).
@@ -487,6 +487,37 @@ pub fn app_bar(app: &mut SolveApp, ui: &mut egui::Ui) {
         };
         if gresp.on_hover_text(prefs_tip).clicked() {
             crate::prefs::open_at(app, 0);
+        }
+        // The geometry kernel switch: the bar's own Truck/Core toggle, left of the Assistant.
+        // The label is the state; clicking flips it (the preference persists like any other,
+        // and a `SOLIDCRAFT_KERNEL` environment override keeps winning inside the kernel).
+        {
+            use solidcraft_engine::kernel::KernelChoice;
+            let core = KernelChoice::from_id(&app.preferences.kernel).unwrap_or_default() == KernelChoice::Solidcore;
+            let label = if core { "Core" } else { "Truck" };
+            let galley = ui.painter().layout_no_wrap(label.to_string(), FontId::proportional(t.font_button), t.app_bar_text);
+            let krect = Rect::from_center_size(pos2(report.left() - 130.0, r.center().y), vec2(galley.size().x + 16.0, 26.0));
+            let kresp = ui.interact(krect, ui.id().with("sc_kernel_button"), Sense::click());
+            kresp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
+            crate::scenario::publish_target("titlebar:kernel", krect);
+            crate::scenario::publish_handle("titlebar:kernel", krect.center());
+            if kresp.hovered() || kresp.has_focus() {
+                ui.painter().rect_filled(krect, t.radius_sm, t.app_bar_hover_button);
+            }
+            ui.painter().galley(pos2(krect.left() + 8.0, krect.center().y - galley.size().y / 2.0), galley, t.app_bar_text);
+            let tip = format!(
+                "{} — {}",
+                crate::i18n::tr_label("Geometry kernel"),
+                if core {
+                    crate::i18n::tr_label("Core is the experimental kernel; operations it cannot do use Truck")
+                } else {
+                    crate::i18n::tr_label("Truck is the stable kernel; click to try the experimental Core")
+                }
+            );
+            if kresp.on_hover_text(tip).clicked() {
+                app.preferences.kernel = if core { "truck".into() } else { "solidcore".into() };
+                crate::prefs::kernel_changed(app);
+            }
         }
         if version_room(r, captions, tabs_start, version.size().x).is_some() {
             let galley = version;
