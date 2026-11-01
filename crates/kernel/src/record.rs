@@ -147,8 +147,9 @@ pub(crate) fn build_placed(
     flip: bool,
     coarse: Option<(f64, usize)>,
     phased: bool,
+    rigid_size: Option<f64>,
 ) -> Result<Body> {
-    Ok(traced(Body::new_placed(solid, flip, coarse, phased)?, counts, faces, edges))
+    Ok(traced(Body::new_placed(solid, flip, coarse, phased, rigid_size)?, counts, faces, edges))
 }
 
 /// The origins of `body`'s edges by identity, from its history `h` (edges in its edge order).

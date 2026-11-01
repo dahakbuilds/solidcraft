@@ -2251,6 +2251,7 @@ fn transform_matrix_keeping(body: &Body, m: [[f64; 4]; 4], phased: bool) -> Resu
             det3(&m) < 0.0,
             rigid_placement(&m).then_some(body.coarse_missing).flatten(),
             phased,
+            rigid_placement(&m).then_some(body.rigid_carry_size()).flatten(),
         )?;
         Ok(placed.with_color(body.color()).with_paint(body.paint().cloned()).with_face_sources(sources).inherit_regularization_protection(body))
     })

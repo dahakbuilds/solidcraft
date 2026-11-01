@@ -679,20 +679,22 @@ impl Body {
     /// again. Only for closed solids; `coarse` is the input's cached missing-face count, which a
     /// rigid placement preserves exactly.
     /// `phased`: the solid was placed from a body whose revolved faces are turned already.
-    pub(crate) fn new_placed(solid: Solid, flip: bool, coarse: Option<(f64, usize)>, phased: bool) -> Result<Body> {
+    /// `rigid_size`: for a rigid placement, the source body's size — a turn does not change a
+    /// body's own scale, only its bounding box, and tolerances read the scale.
+    pub(crate) fn new_placed(solid: Solid, flip: bool, coarse: Option<(f64, usize)>, phased: bool, rigid_size: Option<f64>) -> Result<Body> {
         if solid.boundaries().is_empty() {
             return Err(KernelError::Failed("empty result".into()));
         }
-        Body::placed_as_is(if phased { solid } else { rephase_revolved(solid) }, flip, coarse)
+        Body::placed_as_is(if phased { solid } else { rephase_revolved(solid) }, flip, coarse, rigid_size)
     }
 
     /// [`Body::new_placed`] for a solid whose revolved faces were already turned away from
     /// their seam (a placement of an oriented body keeps them where they were).
-    fn placed_as_is(mut solid: Solid, flip: bool, coarse: Option<(f64, usize)>) -> Result<Body> {
+    fn placed_as_is(mut solid: Solid, flip: bool, coarse: Option<(f64, usize)>, rigid_size: Option<f64>) -> Result<Body> {
         if solid.boundaries().is_empty() {
             return Err(KernelError::Failed("empty result".into()));
         }
-        let span = span_of(&solid);
+        let span = rigid_size.filter(|s| *s > 0.0).unwrap_or_else(|| span_of(&solid));
         if flip {
             solid.not();
         }
@@ -729,7 +731,12 @@ impl Body {
             return Err(KernelError::Invalid("degenerate placement".into()));
         }
         let rigid = crate::ops::rigid_placement(&a);
-        let out = Body::placed_as_is(mt::builder::transformed(&*self.solid, *m), det < 0.0, rigid.then_some(self.coarse_missing).flatten())?;
+        let out = Body::placed_as_is(
+            mt::builder::transformed(&*self.solid, *m),
+            det < 0.0,
+            rigid.then_some(self.coarse_missing).flatten(),
+            rigid.then_some(self.rigid_carry_size()).flatten(),
+        )?;
         // A placement that does not change distances leaves the boundaries exactly as far off
         // their surfaces as they were, so the file's own figure still describes them (see
         // [`Body::boundary_tol`]); one that scales the part does not, and the copy declares
@@ -1102,6 +1109,15 @@ impl Body {
             .map(std::sync::Arc::new);
         self.regularization_protected |= self.paint().is_some_and(|paint| !paint.faces.is_empty());
         self
+    }
+
+    /// The size a rigid placement should carry over. A body that measured itself when made
+    /// keeps the old rule (the placement re-measures the turned box, as it always has); one
+    /// built by hand carries 0 and measures once, here, and keeps it — a turn changes the
+    /// box around a body, not the body, and tolerances that ride the box make fills answer
+    /// differently to the same part turned.
+    pub(crate) fn rigid_carry_size(&self) -> Option<f64> {
+        (self.size == 0.0).then(|| self.size())
     }
 
     /// Characteristic size (bounding box diagonal) for tolerances. [`Body::new`] measured it
