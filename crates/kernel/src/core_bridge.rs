@@ -27,8 +27,6 @@ use crate::{Body, KernelError, Result, guard};
 
 /// A fresh solidcore kernel: all tolerances and caches live in this value, so each
 /// routed operation can hold its own.
-// Used as soon as the first operation routes through solidcore (plan M3).
-#[allow(dead_code, reason = "the routing that consumes this lands in the next milestone")]
 pub(crate) fn core_kernel() -> Kernel {
     Kernel::new(&KernelOptions::default())
 }
@@ -105,7 +103,26 @@ pub(crate) fn core_to_solid(brep: &Brep, k: &Kernel) -> Result<mt::Solid> {
         // dived into the solid, and the face must flip.
         let shell: mt::Shell = faces.clone().into();
         if let Some((plan, _)) = mt::Solid::try_new(vec![shell]).ok().and_then(|s| crate::tess::plan(&s, 0.05, None, None).ok()) {
-            orient_faces(&mut faces, &plan.evaluate());
+            let mesh = plan.evaluate();
+            let flipped = orient_faces(&mut faces, &mesh);
+            // Safety net: the probes are local and can all agree on a grazing ray,
+            // but the whole shell cannot enclose negative volume. Re-sum the mesh
+            // with each face's decided orientation; if the solid comes out inside
+            // out, every face flips together.
+            let mut volume = 0.0;
+            for (t, &fi) in mesh.triangles.iter().zip(&mesh.tri_face) {
+                if let (Some(a), Some(b), Some(c)) =
+                    (mesh.positions.get(t[0] as usize), mesh.positions.get(t[1] as usize), mesh.positions.get(t[2] as usize))
+                {
+                    let sign = if flipped.get(fi as usize).copied().unwrap_or(false) { -1.0 } else { 1.0 };
+                    volume += sign * (*a).dot((*b).cross(*c)) / 6.0;
+                }
+            }
+            if volume < 0.0 {
+                for face in &mut faces {
+                    flip_face(face);
+                }
+            }
         }
         let shell: mt::Shell = faces.into();
         mt::Solid::try_new(vec![shell]).map_err(|e| invalid(format!("solid: {e}")))
@@ -122,9 +139,10 @@ pub(crate) fn core_to_solid(brep: &Brep, k: &Kernel) -> Result<mt::Solid> {
 /// the face's normal turns outward. This reads nothing from solidcore's loop
 /// directions or truck's edge flags — pure geometry, the only convention both
 /// kernels agree on.
-fn orient_faces(faces: &mut [mt::Face], mesh: &solidcraft_geom::Mesh) {
+fn orient_faces(faces: &mut [mt::Face], mesh: &solidcraft_geom::Mesh) -> Vec<bool> {
     use solidcraft_geom::Vec3;
     let n = faces.len();
+    let mut flipped = vec![false; n];
     // Per face, its largest triangle: its normal is the local winding direction.
     // (The area-weighted sum of all a face's normals cancels for a full wrap
     // around an axis, so the aggregate is no probe to steer by.)
@@ -175,18 +193,25 @@ fn orient_faces(faces: &mut [mt::Face], mesh: &solidcraft_geom::Mesh) {
             }
         }
         if odd >= 2 {
-            let wires: Vec<_> = face
-                .boundaries()
-                .into_iter()
-                .map(|mut w| {
-                    w.invert();
-                    w
-                })
-                .collect();
-            *face = mt::Face::new_unchecked(wires, face.surface());
-            face.invert();
+            flip_face(face);
+            flipped[i] = true;
         }
     }
+    flipped
+}
+
+/// Reverse a face: its wires run the other way and its material flag follows.
+fn flip_face(face: &mut mt::Face) {
+    let wires: Vec<_> = face
+        .boundaries()
+        .into_iter()
+        .map(|mut w| {
+            w.invert();
+            w
+        })
+        .collect();
+    *face = mt::Face::new_unchecked(wires, face.surface());
+    face.invert();
 }
 
 /// Whether the ray `o` + `t`·`d` (t > 0) crosses the triangle `a`-`b`-`c`
@@ -218,9 +243,21 @@ fn ray_crosses(
     f * e2.dot(q) > 1e-9
 }
 
+/// A solidcore primitive B-rep as a [`Body`]: run `make` on a fresh kernel and
+/// convert, so a routed primitive is one call. Any error falls out for the caller's
+/// fallback to truck.
+pub(crate) fn core_primitive(make: impl FnOnce(&mut Kernel) -> std::result::Result<Brep, solidcore::SolidError>) -> Result<Body> {
+    let mut k = core_kernel();
+    let brep = make(&mut k).map_err(curve_err)?;
+    core_to_body(&brep, &k)
+}
+
+/// A SolidCraft point as a solidcore point.
+pub(crate) fn sc_point(v: solidcraft_geom::Vec3) -> ScPoint3 {
+    ScPoint3 { x: v.x, y: v.y, z: v.z }
+}
+
 /// A completed solidcore B-rep as a [`Body`] (see [`core_to_solid`]).
-// Used as soon as the first operation routes through solidcore (plan M3).
-#[allow(dead_code, reason = "the routing that consumes this lands in the next milestone")]
 pub(crate) fn core_to_body(brep: &Brep, k: &Kernel) -> Result<Body> {
     core_to_solid(brep, k).and_then(Body::new)
 }
@@ -526,6 +563,22 @@ mod tests {
             assert!((m.volume - want_volume).abs() <= want_volume.abs() * 1e-3, "volume {} vs {want_volume}", m.volume);
             assert!((m.area - want_area).abs() <= want_area.abs() * 1e-2, "area {} vs {want_area}", m.area);
         }
+    }
+
+    #[test]
+    fn a_box_sits_on_its_origin_corner() {
+        // The box_solid routing assumes solidcore's origin is the low corner.
+        let mut k = kernel();
+        let brep = solidcore::primitive::api_primitives::create_box(&mut k, point(1.0, 2.0, 3.0), 2.0, 3.0, 4.0).unwrap();
+        let solid = core_to_solid(&brep, &k).unwrap();
+        let (mut lo, mut hi) = (solidcraft_geom::Vec3::new(f64::MAX, f64::MAX, f64::MAX), solidcraft_geom::Vec3::new(f64::MIN, f64::MIN, f64::MIN));
+        for v in solid.vertex_iter() {
+            let p = crate::body::from_p3(v.point());
+            lo = lo.min(p);
+            hi = hi.max(p);
+        }
+        assert!((lo - solidcraft_geom::Vec3::new(1.0, 2.0, 3.0)).len() < 1e-9, "{lo:?} {hi:?}");
+        assert!((hi - solidcraft_geom::Vec3::new(3.0, 5.0, 7.0)).len() < 1e-9, "{lo:?} {hi:?}");
     }
 
     #[test]

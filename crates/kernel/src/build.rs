@@ -514,6 +514,18 @@ fn turned_whole(solid: Solid, faces: Option<Vec<FaceProv>>) -> (Solid, Option<Ve
     }
 }
 
+/// Run `core` when the solidcore kernel is selected, falling back to the truck path
+/// `truck` on any error: the solidcore path is experimental by design, and every
+/// routed operation must answer exactly what truck would when solidcore refuses.
+fn routed<T>(core: impl FnOnce() -> Result<T>, truck: impl FnOnce() -> Result<T>) -> Result<T> {
+    if crate::choice::solidcore_selected()
+        && let Ok(v) = core()
+    {
+        return Ok(v);
+    }
+    truck()
+}
+
 /// Axis-aligned box between two corners.
 pub fn box_solid(a: Vec3, b: Vec3) -> Result<Body> {
     let (lo, hi) = (a.min(b), a.max(b));
@@ -521,29 +533,77 @@ pub fn box_solid(a: Vec3, b: Vec3) -> Result<Body> {
     if !(s.x > 1e-6 && s.y > 1e-6 && s.z > 1e-6 && s.is_finite() && s.len() < 1e7) {
         return Err(KernelError::Invalid("box needs a positive size in x, y and z".into()));
     }
-    let r = Region2 {
-        outer: Loop2::polygon(&[Vec2::new(lo.x, lo.y), Vec2::new(hi.x, lo.y), Vec2::new(hi.x, hi.y), Vec2::new(lo.x, hi.y)]),
-        holes: vec![],
-    };
-    let mut v = extrude(&Plane::XY, &[r], lo.z, hi.z)?;
-    let body = v.pop().ok_or_else(|| KernelError::Failed("box".into()))?;
-    let sources = body.face_sources().ok_or_else(|| KernelError::Failed("box construction source".into()))?;
-    let mut roles = std::collections::HashSet::new();
+    routed(
+        || {
+            let body = crate::core_bridge::core_primitive(|k| {
+                solidcore::primitive::api_primitives::create_box(k, crate::core_bridge::sc_point(lo), s.x, s.y, s.z)
+            })?;
+            certify_core_box(body, lo, hi)
+        },
+        || {
+            let r = Region2 {
+                outer: Loop2::polygon(&[Vec2::new(lo.x, lo.y), Vec2::new(hi.x, lo.y), Vec2::new(hi.x, hi.y), Vec2::new(lo.x, hi.y)]),
+                holes: vec![],
+            };
+            let mut v = extrude(&Plane::XY, &[r], lo.z, hi.z)?;
+            let body = v.pop().ok_or_else(|| KernelError::Failed("box".into()))?;
+            let sources = body.face_sources().ok_or_else(|| KernelError::Failed("box construction source".into()))?;
+            let mut roles = std::collections::HashSet::new();
+            let mut certified = Vec::new();
+            for source in sources {
+                let role = match source {
+                    Some(crate::FaceSource::ExtrudeCap { high, .. }) => Some((2u8, *high)),
+                    Some(crate::FaceSource::ExtrudeSide { segment: Seg2::Line { a, b }, .. }) if a.x == b.x && a.x == lo.x => Some((0, false)),
+                    Some(crate::FaceSource::ExtrudeSide { segment: Seg2::Line { a, b }, .. }) if a.x == b.x && a.x == hi.x => Some((0, true)),
+                    Some(crate::FaceSource::ExtrudeSide { segment: Seg2::Line { a, b }, .. }) if a.y == b.y && a.y == lo.y => Some((1, false)),
+                    Some(crate::FaceSource::ExtrudeSide { segment: Seg2::Line { a, b }, .. }) if a.y == b.y && a.y == hi.y => Some((1, true)),
+                    _ => None,
+                }
+                .ok_or_else(|| KernelError::Failed("box role correspondence".into()))?;
+                if !roles.insert(role) {
+                    return Err(KernelError::Failed("duplicate box role".into()));
+                }
+                let (axis, high) = role;
+                let sign = if high { 1. } else { -1. };
+                let plane = match axis {
+                    0 => Plane { origin: Vec3::X * if high { hi.x } else { lo.x }, x: Vec3::Y, y: Vec3::Z * sign },
+                    1 => Plane { origin: Vec3::Y * if high { hi.y } else { lo.y }, x: Vec3::X, y: -Vec3::Z * sign },
+                    _ => Plane { origin: Vec3::Z * if high { hi.z } else { lo.z }, x: Vec3::X, y: Vec3::Y * sign },
+                };
+                certified.push(Some(crate::FaceSource::Box { producer: None, axis, high, plane }));
+            }
+            if roles.len() != 6 {
+                return Err(KernelError::Failed("box role count".into()));
+            }
+            Ok(body.with_face_sources(Some(std::sync::Arc::new(certified))))
+        },
+    )
+}
+
+/// The box's certified face roles read back off a converted solid: each face's
+/// outward role is the direction its vertex centroid sits from the box centre.
+fn certify_core_box(body: Body, lo: Vec3, hi: Vec3) -> Result<Body> {
+    let center = (lo + hi) * 0.5;
     let mut certified = Vec::new();
-    for source in sources {
-        let role = match source {
-            Some(crate::FaceSource::ExtrudeCap { high, .. }) => Some((2u8, *high)),
-            Some(crate::FaceSource::ExtrudeSide { segment: Seg2::Line { a, b }, .. }) if a.x == b.x && a.x == lo.x => Some((0, false)),
-            Some(crate::FaceSource::ExtrudeSide { segment: Seg2::Line { a, b }, .. }) if a.x == b.x && a.x == hi.x => Some((0, true)),
-            Some(crate::FaceSource::ExtrudeSide { segment: Seg2::Line { a, b }, .. }) if a.y == b.y && a.y == lo.y => Some((1, false)),
-            Some(crate::FaceSource::ExtrudeSide { segment: Seg2::Line { a, b }, .. }) if a.y == b.y && a.y == hi.y => Some((1, true)),
-            _ => None,
+    for face in body.solid.face_iter() {
+        let mut sum = Vec3::ZERO;
+        let mut n = 0u32;
+        for p in face.vertex_iter() {
+            let p = p.point();
+            sum += Vec3::new(p.x, p.y, p.z);
+            n += 1;
         }
-        .ok_or_else(|| KernelError::Failed("box role correspondence".into()))?;
-        if !roles.insert(role) {
-            return Err(KernelError::Failed("duplicate box role".into()));
+        if n == 0 {
+            return Err(KernelError::Failed("solidcore box face without vertices".into()));
         }
-        let (axis, high) = role;
+        let dir = sum * (1.0 / n as f64) - center;
+        let (axis, high) = if dir.x.abs() >= dir.y.abs() && dir.x.abs() >= dir.z.abs() {
+            (0u8, dir.x > 0.0)
+        } else if dir.y.abs() >= dir.z.abs() {
+            (1, dir.y > 0.0)
+        } else {
+            (2, dir.z > 0.0)
+        };
         let sign = if high { 1. } else { -1. };
         let plane = match axis {
             0 => Plane { origin: Vec3::X * if high { hi.x } else { lo.x }, x: Vec3::Y, y: Vec3::Z * sign },
@@ -552,8 +612,8 @@ pub fn box_solid(a: Vec3, b: Vec3) -> Result<Body> {
         };
         certified.push(Some(crate::FaceSource::Box { producer: None, axis, high, plane }));
     }
-    if roles.len() != 6 {
-        return Err(KernelError::Failed("box role count".into()));
+    if certified.len() != 6 {
+        return Err(KernelError::Failed("solidcore box face count".into()));
     }
     Ok(body.with_face_sources(Some(std::sync::Arc::new(certified))))
 }
@@ -568,16 +628,40 @@ pub fn cylinder(base: Vec3, axis: Vec3, radius: f64, height: f64) -> Result<Body
     if radius <= 1e-6 {
         return Err(KernelError::Invalid("radius must be positive".into()));
     }
-    // The seams at an odd angle: on the frame's axes they would lie exactly where faces placed
-    // on a grid cut the cylinder (along a seam edge, which booleans don't survive).
-    let r = Region2 { outer: Loop2::circle_from(Vec2::ZERO, radius, SEAM_ANGLE), holes: vec![] };
-    let mut v = extrude(&plane, &[r], 0.0, finite(height, "height")?)?;
-    v.pop().ok_or_else(|| KernelError::Failed("cylinder".into()))
+    let height = finite(height, "height")?;
+    routed(
+        || {
+            // Built along +Z at the origin, then placed on the requested frame with its
+            // seam turned to SEAM_ANGLE, as truck's cylinder keeps it off the grid cuts.
+            let body = crate::core_bridge::core_primitive(|k| {
+                solidcore::primitive::api_primitives::create_cylinder(k, crate::core_bridge::sc_point(Vec3::ZERO), radius, height)
+            })?;
+            let a = axis.normalized().ok_or_else(|| KernelError::Invalid("cylinder axis".into()))?;
+            let (sa, ca) = SEAM_ANGLE.sin_cos();
+            let (x, y) = (plane.x, plane.y);
+            let (xs, ys) = (x * ca + y * sa, y * ca - x * sa);
+            crate::transform_matrix(&body, [[xs.x, xs.y, xs.z, 0.0], [ys.x, ys.y, ys.z, 0.0], [a.x, a.y, a.z, 0.0], [base.x, base.y, base.z, 1.0]])
+        },
+        || {
+            // The seams at an odd angle: on the frame's axes they would lie exactly where faces placed
+            // on a grid cut the cylinder (along a seam edge, which booleans don't survive).
+            let r = Region2 { outer: Loop2::circle_from(Vec2::ZERO, radius, SEAM_ANGLE), holes: vec![] };
+            let mut v = extrude(&plane, &[r], 0.0, height)?;
+            v.pop().ok_or_else(|| KernelError::Failed("cylinder".into()))
+        },
+    )
 }
 
 /// Sphere: revolve a half disc.
 pub fn sphere(center: Vec3, radius: f64) -> Result<Body> {
-    sphere_patches(center, radius)
+    routed(
+        || {
+            crate::core_bridge::core_primitive(|k| {
+                solidcore::primitive::api_primitives::create_sphere(k, crate::core_bridge::sc_point(center), radius)
+            })
+        },
+        || sphere_patches(center, radius),
+    )
 }
 
 /// Torus about the Z axis through `center`.
@@ -586,10 +670,19 @@ pub fn torus(center: Vec3, major: f64, minor: f64) -> Result<Body> {
     if !(minor > 1e-6 && major > minor) {
         return Err(KernelError::Invalid("torus needs major > minor > 0".into()));
     }
-    let plane = Plane { origin: center, ..Plane::XZ };
-    let r = Region2 { outer: Loop2::circle(Vec2::new(major, 0.0), minor), holes: vec![] };
-    let mut v = revolve(&plane, &[r], Vec2::ZERO, Vec2::Y, std::f64::consts::TAU)?;
-    v.pop().ok_or_else(|| KernelError::Failed("torus".into()))
+    routed(
+        || {
+            crate::core_bridge::core_primitive(|k| {
+                solidcore::primitive::api_primitives::create_torus(k, crate::core_bridge::sc_point(center), major, minor)
+            })
+        },
+        || {
+            let plane = Plane { origin: center, ..Plane::XZ };
+            let r = Region2 { outer: Loop2::circle(Vec2::new(major, 0.0), minor), holes: vec![] };
+            let mut v = revolve(&plane, &[r], Vec2::ZERO, Vec2::Y, std::f64::consts::TAU)?;
+            v.pop().ok_or_else(|| KernelError::Failed("torus".into()))
+        },
+    )
 }
 
 /// Offset every segment of a loop to its right by `d` (outward for a region's outer loop and
