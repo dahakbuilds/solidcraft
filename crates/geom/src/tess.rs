@@ -220,6 +220,28 @@ impl EvalSurface {
             if let Some((_, a, b)) = self.derivs(u + su * h, v + sv * h)
                 && let Some(n) = self.oriented(a.cross(b)).normalized()
             {
+                // A pole of a surface of revolution where the profile meets the axis square
+                // (a sphere's pole): the normal there is the axis itself, and the step above
+                // returns it tilted by the step. The side comes from the surface just inside
+                // the profile's own domain — a step past the pole wraps and flips the side.
+                if let EvalSurface::Revolved { profile, axis, transform, swap, .. } = self {
+                    let s = if *swap { v } else { u };
+                    let d = profile.degree;
+                    if let (Some(&lo), Some(&hi)) = (profile.knots.get(d), profile.knots.get(profile.knots.len().saturating_sub(d + 1))) {
+                        let s_in = if s <= lo { lo + 1e-7 * (hi - lo) } else if s >= hi { hi - 1e-7 * (hi - lo) } else { s };
+                        if let Some((_, dc)) = profile.eval(s) {
+                            let wa = linear(transform, *axis);
+                            if wa.len2() > 0.0 && dc.dot(wa).abs() <= 1e-9 * dc.len() * wa.len() {
+                                let (u_in, v_in) = if *swap { (u, s_in) } else { (s_in, v) };
+                                if let Some((_, a, b)) = self.derivs(u_in, v_in)
+                                    && let Some(nin) = self.oriented(a.cross(b)).normalized() {
+                                    let ax = wa / wa.len();
+                                    return (p, if nin.dot(ax) < 0.0 { ax * -1.0 } else { ax });
+                                }
+                            }
+                        }
+                    }
+                }
                 return (p, n);
             }
         }
