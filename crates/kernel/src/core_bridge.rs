@@ -536,11 +536,17 @@ fn convert_surface(surface: &ScSurface, uv: Extent2d, k: &Kernel) -> Result<mt::
     Ok(match surface.kind() {
         SurfaceKind::Plane(plane) => {
             let a = plane.position();
-            let (o, u, v) = (p3(a.origin()), v3(a.x_axis()), v3(a.y_axis()));
+            let (u, v) = (v3(a.x_axis()), v3(a.y_axis()));
             if u.cross(v).magnitude() < 1e-12 {
                 return Err(invalid("degenerate plane axes"));
             }
-            mt::Surface::Plane(mt::Plane::new(o, o + u, o + v))
+            // Truck planes carry a unit-square range, so scale the axes to the face's own
+            // UV rectangle: the face's boundary then lands inside the surface's range,
+            // exactly as a truck-native box face does.
+            let (umin, umax) = (uv.u_interval().min(), uv.u_interval().max());
+            let (vmin, vmax) = (uv.v_interval().min(), uv.v_interval().max());
+            let o = p3(a.origin()) + u * umin + v * vmin;
+            mt::Surface::Plane(mt::Plane::new(o, o + u * (umax - umin), o + v * (vmax - vmin)))
         }
         SurfaceKind::Cone(cone) => {
             // Cone and cylinder share the kind; the canonical placement puts the origin
