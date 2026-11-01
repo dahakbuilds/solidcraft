@@ -38,7 +38,6 @@ pub(crate) fn core_kernel() -> Kernel {
 /// is not a closed solid.
 pub(crate) fn core_to_solid(brep: &Brep, k: &Kernel) -> Result<mt::Solid> {
     guard("solidcore to truck", || {
-        let mut faces: Vec<mt::Face> = Vec::new();
         // truck compares vertices by instance id, so each solidcore vertex becomes one
         // truck vertex cloned into every edge that uses it.
         let mut vertices: HashMap<VertexId, mt::Vertex> = HashMap::new();
@@ -47,49 +46,56 @@ pub(crate) fn core_to_solid(brep: &Brep, k: &Kernel) -> Result<mt::Solid> {
         let mut edge_cache: HashMap<solidcore::topology::EdgeId, Vec<(mt::Edge, (VertexId, VertexId))>> = HashMap::new();
         // Ids minted for the midpoints of split closed edges (below the arena's range).
         let mut synthetic: u32 = u32::MAX;
-        for (fid, face) in brep.faces().iter() {
-            let surface = face.surface.as_ref().ok_or_else(|| invalid(format!("face {fid:?} has no surface")))?;
-            let mt_surface = convert_surface(surface, face.uv_domain, k)?;
-            let mut wires = Vec::new();
-            for lid in &face.loops {
-                let loop_ = brep.loop_(*lid).map_err(|e| invalid(format!("loop: {e}")))?;
-                // One wire per loop, seam edge and all: truck's own primitives carry a
-                // seam edge on a closed surface's face (the edge the face uses twice,
-                // once each way), and its mesher expects it — a face trimmed only by
-                // full circles comes out degenerate. So the loop converts whole.
-                let mut run: Vec<mt::Edge> = Vec::new();
-                let mut run_front: Option<VertexId> = None;
-                let mut run_back: Option<VertexId> = None;
-                for le in &loop_.edges {
-                    let edge = brep.edge(le.edge).map_err(|e| invalid(format!("edge: {e}")))?;
-                    let mut pieces = convert_edge(brep, le.edge, edge, k, &mut vertices, &mut edge_cache, &mut synthetic)?;
-                    if !le.forward {
-                        pieces.reverse();
-                    }
-                    for (piece, (front, back)) in pieces {
-                        let (front, back) = if le.forward { (front, back) } else { (back, front) };
-                        let piece = if le.forward { piece } else { piece.inverse() };
-                        if run_back.is_some() && run_back != Some(front) {
-                            return Err(invalid(format!("face {fid:?} loop {lid:?} is not a closed run")));
+        let mut faces = match cylinder_half_shells(brep, k, &mut vertices, &mut edge_cache, &mut synthetic)? {
+            Some(faces) => faces,
+            None => {
+                let mut faces: Vec<mt::Face> = Vec::new();
+                for (fid, face) in brep.faces().iter() {
+                    let surface = face.surface.as_ref().ok_or_else(|| invalid(format!("face {fid:?} has no surface")))?;
+                    let mt_surface = convert_surface(surface, face.uv_domain, k)?;
+                    let mut wires = Vec::new();
+                    for lid in &face.loops {
+                        let loop_ = brep.loop_(*lid).map_err(|e| invalid(format!("loop: {e}")))?;
+                        // One wire per loop, seam edge and all: truck's own primitives carry a
+                        // seam edge on a closed surface's face (the edge the face uses twice,
+                        // once each way), and its mesher expects it — a face trimmed only by
+                        // full circles comes out degenerate. So the loop converts whole.
+                        let mut run: Vec<mt::Edge> = Vec::new();
+                        let mut run_front: Option<VertexId> = None;
+                        let mut run_back: Option<VertexId> = None;
+                        for le in &loop_.edges {
+                            let edge = brep.edge(le.edge).map_err(|e| invalid(format!("edge: {e}")))?;
+                            let mut pieces = convert_edge(brep, le.edge, edge, k, &mut vertices, &mut edge_cache, &mut synthetic)?;
+                            if !le.forward {
+                                pieces.reverse();
+                            }
+                            for (piece, (front, back)) in pieces {
+                                let (front, back) = if le.forward { (front, back) } else { (back, front) };
+                                let piece = if le.forward { piece } else { piece.inverse() };
+                                if run_back.is_some() && run_back != Some(front) {
+                                    return Err(invalid(format!("face {fid:?} loop {lid:?} is not a closed run")));
+                                }
+                                if run_front.is_none() {
+                                    run_front = Some(front);
+                                }
+                                run_back = Some(back);
+                                run.push(piece);
+                            }
                         }
-                        if run_front.is_none() {
-                            run_front = Some(front);
+                        match (run_front, run_back) {
+                            (Some(f), Some(b)) if f == b => wires.push(mt::Wire::from(run)),
+                            (None, None) => {}
+                            _ => return Err(invalid(format!("face {fid:?} loop {lid:?} does not close"))),
                         }
-                        run_back = Some(back);
-                        run.push(piece);
                     }
+                    // new_unchecked: a split closed boundary edge shares its seam vertex with
+                    // its neighbour beyond truck's simplicity check; the shell and solid checks
+                    // below still validate the result.
+                    faces.push(mt::Face::new_unchecked(wires, mt_surface));
                 }
-                match (run_front, run_back) {
-                    (Some(f), Some(b)) if f == b => wires.push(mt::Wire::from(run)),
-                    (None, None) => {}
-                    _ => return Err(invalid(format!("face {fid:?} loop {lid:?} does not close"))),
-                }
+                faces
             }
-            // new_unchecked: a split closed boundary edge shares its seam vertex with
-            // its neighbour beyond truck's simplicity check; the shell and solid checks
-            // below still validate the result.
-            faces.push(mt::Face::new_unchecked(wires, mt_surface));
-        }
+        };
         if faces.is_empty() {
             return Err(invalid("B-rep has no faces"));
         }
@@ -129,6 +135,115 @@ pub(crate) fn core_to_solid(brep: &Brep, k: &Kernel) -> Result<mt::Solid> {
     })
 }
 
+/// The solidcore cylinder is one full-wrap surface of revolution closed by two caps:
+/// truck's mesher drops full-wrap faces and its SSI hangs on them, so a cylinder
+/// shell is rebuilt the way truck builds its own — two planar caps and two half-shell
+/// sides, each side a ruled NURBS strip between the matching halves of the cap
+/// circles. Every edge stays one shared instance, the circles split at the seam and at
+/// the half-way point, so the shell closes under truck's pairing. Returns `Ok(None)`
+/// for anything that is not exactly this shell, leaving it to the generic conversion.
+fn cylinder_half_shells(
+    brep: &Brep,
+    k: &Kernel,
+    vertices: &mut HashMap<VertexId, mt::Vertex>,
+    edge_cache: &mut HashMap<solidcore::topology::EdgeId, Vec<(mt::Edge, (VertexId, VertexId))>>,
+    synthetic: &mut u32,
+) -> Result<Option<Vec<mt::Face>>> {
+    if brep.faces().len() != 3 {
+        return Ok(None);
+    }
+    let mut side: Option<&solidcore::topology::Face> = None;
+    let mut caps: Vec<&solidcore::topology::Face> = Vec::new();
+    for (_, face) in brep.faces().iter() {
+        match face.surface.as_ref().map(|s| s.kind()) {
+            Some(SurfaceKind::Cone(cone)) if cone.is_cylinder() && side.is_none() => side = Some(face),
+            Some(SurfaceKind::Plane(_)) => caps.push(face),
+            _ => return Ok(None),
+        }
+    }
+    let Some(side) = side else {
+        return Ok(None);
+    };
+    if caps.len() != 2 {
+        return Ok(None);
+    }
+    // Each cap is one loop of one closed circular edge; the side is one loop of the
+    // two circles and the seam line, the line used twice once each way.
+    let mut cap_edges: Vec<solidcore::topology::EdgeId> = Vec::new();
+    for cap in &caps {
+        let [lid] = cap.loops.as_slice() else {
+            return Ok(None);
+        };
+        let lp = brep.loop_(*lid).map_err(|e| invalid(format!("loop: {e}")))?;
+        let [le] = lp.edges.as_slice() else {
+            return Ok(None);
+        };
+        let edge = brep.edge(le.edge).map_err(|e| invalid(format!("edge: {e}")))?;
+        if edge.vertices[0] != edge.vertices[1] || !matches!(edge.curve.as_ref().map(|c| c.kind()), Some(ScCurveKind::Ellipse(el)) if el.is_circle())
+        {
+            return Ok(None);
+        }
+        cap_edges.push(le.edge);
+    }
+    let [side_lid] = side.loops.as_slice() else {
+        return Ok(None);
+    };
+    let side_lp = brep.loop_(*side_lid).map_err(|e| invalid(format!("loop: {e}")))?;
+    let seams: Vec<_> = side_lp.edges.iter().map(|le| le.edge).filter(|id| !cap_edges.contains(id)).collect();
+    let [seam_id, seam_again] = seams.as_slice() else {
+        return Ok(None);
+    };
+    if seam_again != seam_id {
+        return Ok(None);
+    }
+    let seam = brep.edge(*seam_id).map_err(|e| invalid(format!("edge: {e}")))?;
+    if seam.vertices[0] == seam.vertices[1] {
+        return Ok(None);
+    }
+    // The cap whose circle starts at the seam's front vertex is the "bottom" the wires
+    // below are wound around.
+    let bottom_first = brep.edge(cap_edges[0]).map_err(|e| invalid(format!("edge: {e}")))?.vertices[0] == seam.vertices[0];
+    let (bot_id, top_id) = if bottom_first { (cap_edges[0], cap_edges[1]) } else { (cap_edges[1], cap_edges[0]) };
+    let seam_pieces = convert_edge(brep, *seam_id, seam, k, vertices, edge_cache, synthetic)?;
+    let bot_pieces = convert_edge(brep, bot_id, brep.edge(bot_id).map_err(|e| invalid(format!("edge: {e}")))?, k, vertices, edge_cache, synthetic)?;
+    let top_pieces = convert_edge(brep, top_id, brep.edge(top_id).map_err(|e| invalid(format!("edge: {e}")))?, k, vertices, edge_cache, synthetic)?;
+    let ([line0], [p1, _], [q1, _]) = (seam_pieces.as_slice(), bot_pieces.as_slice(), top_pieces.as_slice()) else {
+        return Ok(None);
+    };
+    let (line0, _) = line0.clone();
+    let (p1, _) = p1.clone();
+    let p2 = bot_pieces[1].0.clone();
+    let (q1, _) = q1.clone();
+    let q2 = top_pieces[1].0.clone();
+    // The strip's height: the seam runs base circle to top circle along the axis.
+    let h = line0.back().point() - line0.front().point();
+    // The ruling the two halves share, at the circles' half-way vertices.
+    let ruling = mt::Edge::try_new(p1.back(), q1.back(), mt::Curve::Line(mt::Line(p1.back().point(), q1.back().point())))
+        .map_err(|e| invalid(format!("ruling: {e}")))?;
+    let strip = |low: &mt::Edge| -> Result<mt::Surface> {
+        let mt::Curve::NurbsCurve(arc) = low.oriented_curve() else {
+            return Err(unsupported("cylinder side curve"));
+        };
+        let net: Vec<Vec<mt::Vector4>> =
+            arc.control_points().iter().map(|c| vec![*c, mt::Vector4::new(c.x + h.x * c.w, c.y + h.y * c.w, c.z + h.z * c.w, c.w)]).collect();
+        let surface = mt::BSplineSurface::try_new((arc.knot_vec().clone(), mt::KnotVec::from(vec![0.0, 0.0, 1.0, 1.0])), net)
+            .map_err(|e| invalid(format!("cylinder side: {e}")))?;
+        Ok(mt::Surface::NurbsSurface(mt::NurbsSurface::new(surface)))
+    };
+    let cap_surface = |cap: &solidcore::topology::Face| match cap.surface.as_ref() {
+        Some(surface) => convert_surface(surface, cap.uv_domain, k),
+        None => Err(invalid("cap without a surface")),
+    };
+    let (bottom, top) = if bottom_first { (caps[0], caps[1]) } else { (caps[1], caps[0]) };
+    let faces = vec![
+        mt::Face::new_unchecked(vec![mt::Wire::from(vec![p1.inverse(), p2.inverse()])], cap_surface(bottom)?),
+        mt::Face::new_unchecked(vec![mt::Wire::from(vec![p1, ruling.clone(), q1.inverse(), line0.inverse()])], strip(&bot_pieces[0].0)?),
+        mt::Face::new_unchecked(vec![mt::Wire::from(vec![p2, line0, q2.inverse(), ruling.inverse()])], strip(&bot_pieces[1].0)?),
+        mt::Face::new_unchecked(vec![mt::Wire::from(vec![q1, q2])], cap_surface(top)?),
+    ];
+    Ok(Some(faces))
+}
+
 /// Set each face's orientation by asking the meshed shell which way is out.
 /// With every flag true, each face's mesh triangles wind by its surface normal; a
 /// ray from a face's area-weighted centroid along its area vector that crosses the
@@ -163,9 +278,15 @@ fn orient_faces(faces: &mut [mt::Face], mesh: &solidcraft_geom::Mesh) -> Vec<boo
         }
     }
     for (i, face) in faces.iter_mut().enumerate() {
-        let Some((probe_ti, centroid, nv, _)) = probe[i] else { continue };
+        let Some((probe_ti, centroid, nv, w)) = probe[i] else { continue };
         let Some(dir) = nv.normalized() else { continue };
-        let origin = centroid + dir * 1e-6;
+        // Start beyond the face's local surface patch: a triangle's centroid sits a
+        // sagitta inside the curved surface it chords, and a ray from there crosses the
+        // mesh's local fan on its way out, which reads as dipping into the solid. A push
+        // of the probe triangle's own scale clears that fan (and the mesh, which lies
+        // within the chord tolerance of the surface) while staying inside any solid the
+        // face bounds on a true inward winding.
+        let origin = centroid + dir * (w.sqrt().max(1e-6));
         // Three near-parallel rays: a single one grazing an edge or vertex would
         // miscount the crossings; the majority of three will not all graze.
         let side = dir.cross(if dir.x.abs() < 0.9 { Vec3::X } else { Vec3::Y }).normalized().unwrap_or(Vec3::Z);
