@@ -538,7 +538,23 @@ pub fn box_solid(a: Vec3, b: Vec3) -> Result<Body> {
             let body = crate::core_bridge::core_primitive(|k| {
                 solidcore::primitive::api_primitives::create_box(k, crate::core_bridge::sc_point(lo), s.x, s.y, s.z)
             })?;
-            certify_core_box(body, lo, hi)
+            let body = certify_core_box(body, lo, hi)?;
+            // The same history the truck path leaves: the rectangle's four sides in polygon
+            // order (−y, +x, +y, −x) under the four side faces, caps under the z faces —
+            // `certify_core_box` has already put the faces in exactly that order.
+            record::attach(
+                body,
+                &[],
+                Some(vec![
+                    record::cap(false),
+                    record::profile(&[0]),
+                    record::profile(&[1]),
+                    record::profile(&[2]),
+                    record::profile(&[3]),
+                    record::cap(true),
+                ]),
+                Default::default(),
+            )
         },
         || {
             let r = Region2 {
@@ -581,10 +597,12 @@ pub fn box_solid(a: Vec3, b: Vec3) -> Result<Body> {
 }
 
 /// The box's certified face roles read back off a converted solid: each face's
-/// outward role is the direction its vertex centroid sits from the box centre.
+/// outward role is the direction its vertex centroid sits from the box centre. The
+/// faces are also put in truck's own box order (−z, −y, +x, +y, −x, +z) so boolean
+/// histories, which index the operand's faces, read the same as truck's boxes.
 fn certify_core_box(body: Body, lo: Vec3, hi: Vec3) -> Result<Body> {
     let center = (lo + hi) * 0.5;
-    let mut certified = Vec::new();
+    let mut faces = Vec::new();
     for face in body.solid.face_iter() {
         let mut sum = Vec3::ZERO;
         let mut n = 0u32;
@@ -610,12 +628,24 @@ fn certify_core_box(body: Body, lo: Vec3, hi: Vec3) -> Result<Body> {
             1 => Plane { origin: Vec3::Y * if high { hi.y } else { lo.y }, x: Vec3::X, y: -Vec3::Z * sign },
             _ => Plane { origin: Vec3::Z * if high { hi.z } else { lo.z }, x: Vec3::X, y: Vec3::Y * sign },
         };
-        certified.push(Some(crate::FaceSource::Box { producer: None, axis, high, plane }));
+        let rank = match (axis, high) {
+            (2, false) => 0,
+            (1, false) => 1,
+            (0, true) => 2,
+            (1, true) => 3,
+            (0, false) => 4,
+            _ => 5,
+        };
+        faces.push((rank, face.clone(), Some(crate::FaceSource::Box { producer: None, axis, high, plane })));
     }
-    if certified.len() != 6 {
+    if faces.len() != 6 {
         return Err(KernelError::Failed("solidcore box face count".into()));
     }
-    Ok(body.with_face_sources(Some(std::sync::Arc::new(certified))))
+    faces.sort_by_key(|(rank, _, _)| *rank);
+    let shell: mt::Shell = faces.iter().map(|(_, f, _)| f.clone()).collect::<Vec<_>>().into();
+    let solid = mt::Solid::try_new(vec![shell]).map_err(|e| KernelError::Failed(format!("solidcore box shell: {e}")))?;
+    let certified = faces.into_iter().map(|(_, _, source)| source).collect::<Vec<_>>();
+    Ok(Body::new(solid)?.with_face_sources(Some(std::sync::Arc::new(certified))))
 }
 
 /// Where primitives start their circles (radians from the frame's x axis).
@@ -640,7 +670,18 @@ pub fn cylinder(base: Vec3, axis: Vec3, radius: f64, height: f64) -> Result<Body
             let (sa, ca) = SEAM_ANGLE.sin_cos();
             let (x, y) = (plane.x, plane.y);
             let (xs, ys) = (x * ca + y * sa, y * ca - x * sa);
-            crate::transform_matrix(&body, [[xs.x, xs.y, xs.z, 0.0], [ys.x, ys.y, ys.z, 0.0], [a.x, a.y, a.z, 0.0], [base.x, base.y, base.z, 1.0]])
+            let body = crate::transform_matrix(
+                &body,
+                [[xs.x, xs.y, xs.z, 0.0], [ys.x, ys.y, ys.z, 0.0], [a.x, a.y, a.z, 0.0], [base.x, base.y, base.z, 1.0]],
+            )?;
+            // The same history the truck path leaves: the circle's two half arcs (the
+            // half-shells, seam turned to SEAM_ANGLE) under the two sides, caps under the caps.
+            record::attach(
+                body,
+                &[],
+                Some(vec![record::cap(false), record::profile(&[0]), record::profile(&[1]), record::cap(true)]),
+                Default::default(),
+            )
         },
         || {
             // The seams at an odd angle: on the frame's axes they would lie exactly where faces placed
@@ -659,6 +700,11 @@ pub fn sphere(center: Vec3, radius: f64) -> Result<Body> {
             crate::core_bridge::core_primitive(|k| {
                 solidcore::primitive::api_primitives::create_sphere(k, crate::core_bridge::sc_point(center), radius)
             })
+            .and_then(|body| {
+                // The same history the truck path leaves: six patches, each from the half
+                // disc's one arc.
+                record::attach(body, &[], Some(vec![record::profile(&[0]); 6]), Default::default())
+            })
         },
         || sphere_patches(center, radius),
     )
@@ -674,6 +720,11 @@ pub fn torus(center: Vec3, major: f64, minor: f64) -> Result<Body> {
         || {
             crate::core_bridge::core_primitive(|k| {
                 solidcore::primitive::api_primitives::create_torus(k, crate::core_bridge::sc_point(center), major, minor)
+            })
+            .and_then(|body| {
+                // The same history the truck path leaves: the circle re-split at its seam,
+                // so every patch face runs over both arcs.
+                record::attach(body, &[], Some(vec![record::profile(&[0, 1]); 6]), Default::default())
             })
         },
         || {

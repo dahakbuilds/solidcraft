@@ -287,6 +287,12 @@ fn cylinder_half_shells(
     // The ruling the two halves share, at the circles' half-way vertices.
     let ruling = mt::Edge::try_new(p1.back(), q1.back(), mt::Curve::Line(mt::Line(p1.back().point(), q1.back().point())))
         .map_err(|e| invalid(format!("ruling: {e}")))?;
+    // The sides are ruled NURBS strips fitted through the converted arcs, not the
+    // analytic cylinder solidcore names: truck's boolean special-cases analytic faces,
+    // but on the fuzz's tangent-cylinder seeds (seed 169) the analytic pair sends it
+    // into a numerical retry loop that runs for many minutes, while the fitted strip
+    // refuses the result cleanly in under a second. Fitted-and-refused beats analytic-
+    // and-hung; revisit when the boolean's retry ladder learns to give up.
     let strip = |low: &mt::Edge| -> Result<mt::Surface> {
         let mt::Curve::NurbsCurve(arc) = low.oriented_curve() else {
             return Err(unsupported("cylinder side curve"));
