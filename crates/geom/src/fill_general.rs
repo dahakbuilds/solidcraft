@@ -1097,7 +1097,7 @@ fn crown(surface: NurbsSurface, net: &Net, st: &[Station], dev: &Developed, crow
     }
     let sign = side.signum();
     let along = |g: [f64; 2]| net.frame(g).map(|(n, _, _)| n * sign);
-    let (surface, _, _) = crate::fill::crown_fill_along(surface, &dev.d, crown, &along, MAX_GENERAL_SPANS)?;
+    let (surface, _, _) = crate::fill::crown_fill_along(surface, &dev.d, crown, &along, MAX_GENERAL_SPANS, false)?;
     Ok(surface)
 }
 

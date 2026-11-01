@@ -295,24 +295,29 @@ fn crown_fill(surface: NurbsSurface, uv: &[[f64; 2]], crown: f64, normal: Vec3) 
     if !normal.is_finite() {
         return invalid("the loop's extent is not finite");
     }
-    crown_fill_along(surface, uv, crown, &|_| Some(normal), MAX_FILL_SPANS)
+    crown_fill_along(surface, uv, crown, &|_| Some(normal), MAX_FILL_SPANS, true)
 }
 
 /// [`crown_fill`] moving each control point along `along(ξ, η)` (at its Greville point, the mean
 /// of its knots each way) rather than one normal: what a fill that is not a height field takes,
-/// with its own normal there. Its net may be refined up to `max_spans` each way.
+/// with its own normal there. Its net may be refined up to `max_spans` each way. With
+/// `hold_bubble`, the net is refined until the middle actually carries `crown · size` (the
+/// bubble's peak): a coarse net crowns only the few points clear of the loop and its middle
+/// falls short of the crown.
 pub(crate) fn crown_fill_along(
     surface: NurbsSurface,
     uv: &[[f64; 2]],
     crown: f64,
     along: &dyn Fn([f64; 2]) -> Option<Vec3>,
     max_spans: usize,
+    hold_bubble: bool,
 ) -> SplineResult<(NurbsSurface, usize, f64)> {
     if crown == 0.0 {
         return Ok((surface, 0, 0.0));
     }
     let gap = loop_gap(uv);
     let mut base = surface;
+    let mut best = None::<(NurbsSurface, usize, f64)>;
     loop {
         if let Some((crowned, points)) = crown_net(&base, uv, gap, crown, along)? {
             let mut drift = 0.0f64;
@@ -324,18 +329,37 @@ pub(crate) fn crown_fill_along(
             if drift > 0.0 {
                 return Err(SplineError::Unsupported("crowning a patch whose loop the fill cannot keep clear".into()));
             }
-            return Ok((crowned, points, drift));
+            if !hold_bubble || bubble_holds(&base, &crowned, crown) {
+                return Ok((crowned, points, drift));
+            }
+            best = Some((crowned, points, drift));
         }
-        // No room inside the loop yet: halve the cells (the surface itself does not change).
+        // No room inside the loop yet (or the bump has not reached the middle): halve the cells
+        // (the surface itself does not change).
         let spans = [0, 1].map(|d| base.count()[d].saturating_sub(3));
         if spans[0] >= max_spans && spans[1] >= max_spans {
-            return Err(SplineError::Unsupported("crowning a patch whose loop leaves no room inside it".into()));
+            return match best {
+                Some(b) => Ok(b),
+                None => Err(SplineError::Unsupported("crowning a patch whose loop leaves no room inside it".into())),
+            };
         }
         for (d, &s) in spans.iter().enumerate() {
             if s < max_spans {
                 base = subdivide(&base, d)?;
             }
         }
+    }
+}
+
+/// Whether the crowned net carries the bubble at the domain's middle: `crown · size` there
+/// (the bubble is 1 at the middle), within a hair of it.
+fn bubble_holds(base: &NurbsSurface, crowned: &NurbsSurface, crown: f64) -> bool {
+    let domain = base.domain();
+    let size = (domain[0][1] - domain[0][0]).hypot(domain[1][1] - domain[1][0]);
+    let mid = [(domain[0][0] + domain[0][1]) / 2.0, (domain[1][0] + domain[1][1]) / 2.0];
+    match (base.eval(mid[0], mid[1]), crowned.eval(mid[0], mid[1])) {
+        (Ok(a), Ok(b)) => (a.dist(b) - crown.abs() * size).abs() <= 1e-7 * size,
+        _ => true,
     }
 }
 
