@@ -228,13 +228,20 @@ impl EvalSurface {
                     let s = if *swap { v } else { u };
                     let d = profile.degree;
                     if let (Some(&lo), Some(&hi)) = (profile.knots.get(d), profile.knots.get(profile.knots.len().saturating_sub(d + 1))) {
-                        let s_in = if s <= lo { lo + 1e-7 * (hi - lo) } else if s >= hi { hi - 1e-7 * (hi - lo) } else { s };
+                        let s_in = if s <= lo {
+                            lo + 1e-7 * (hi - lo)
+                        } else if s >= hi {
+                            hi - 1e-7 * (hi - lo)
+                        } else {
+                            s
+                        };
                         if let Some((_, dc)) = profile.eval(s) {
                             let wa = linear(transform, *axis);
                             if wa.len2() > 0.0 && dc.dot(wa).abs() <= 1e-9 * dc.len() * wa.len() {
                                 let (u_in, v_in) = if *swap { (u, s_in) } else { (s_in, v) };
                                 if let Some((_, a, b)) = self.derivs(u_in, v_in)
-                                    && let Some(nin) = self.oriented(a.cross(b)).normalized() {
+                                    && let Some(nin) = self.oriented(a.cross(b)).normalized()
+                                {
                                     let ax = wa / wa.len();
                                     return (p, if nin.dot(ax) < 0.0 { ax * -1.0 } else { ax });
                                 }
