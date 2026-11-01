@@ -492,6 +492,7 @@ fn plan_face(
     for (li, pts) in loops3.iter().enumerate() {
         let mut luv: Vec<[f64; 2]> = Vec::with_capacity(pts.len());
         let mut prev: Option<[f64; 2]> = None;
+        let mut prev2: Option<[f64; 2]> = None;
         for (k, p) in pts.iter().enumerate() {
             // Known parameters (an intersection edge's), else a projection seeded by the
             // previous node.
@@ -500,12 +501,32 @@ fn plan_face(
                 Some(q) => q,
                 None => uv::project(s, &dom, *p, prev, accept).ok_or_else(|| fail("boundary does not lie on the surface"))?,
             };
+            // A node sitting on a seam has two parameters an equal distance from the walk's
+            // last one, and the seeded search may pick the branch that jumps back across the
+            // face (a coarse circle closing on its own start). When the projection jumped over
+            // half the span, re-project from where the walk was heading and keep that branch
+            // if it lands on the surface nearer the walk.
+            if let (Some(pr), Some(pr2)) = (prev, prev2) {
+                for d in 0..2 {
+                    let span = dom.period[d].or_else(|| dom.range[d].map(|(a, b)| b - a)).unwrap_or(0.0);
+                    if span > 0.0 && (q[d] - pr[d]).abs() >= 0.4 * span {
+                        let seed = [pr[0] + (pr[0] - pr2[0]), pr[1] + (pr[1] - pr2[1])];
+                        if let Some(q2) = uv::project(s, &dom, *p, Some(seed), accept) {
+                            let onward = (pr[d] - pr2[d]) * (q2[d] - pr[d]) > 0.0;
+                            if onward && (q2[d] - pr[d]).abs() <= (q[d] - pr[d]).abs() {
+                                q = q2;
+                            }
+                        }
+                    }
+                }
+            }
             if let Some(pr) = prev {
                 for d in 0..2 {
                     q[d] = uv::unwrap(q[d], pr[d], dom.period[d]);
                 }
             }
             luv.push(q);
+            prev2 = prev;
             prev = Some(q);
         }
         let mut l = seam::Loop { uv: luv, pts: pts.clone() };
